@@ -22,6 +22,11 @@ typedef struct {
 static int cursor_x = 0;
 static int cursor_y = 0;
 
+/* Command input buffer */
+static char input_buffer[256];
+static int input_pos = 0;
+static int command_executed = 0;
+
 /* Forward declarations */
 void kernel_main(void);
 void vga_clear(void);
@@ -33,9 +38,99 @@ void handle_echo(const char *args);
 void handle_fetch(void);
 void handle_help(void);
 void handle_shutdown(void);
+void execute_command(const char *cmd_line);
+void handle_keyboard_input(void);
 
 /* External: defined in assembly */
 extern void halt_cpu(void);
+
+/* Keyboard input functions */
+static inline uint8_t inb(uint16_t port) {
+    uint8_t result;
+    __asm__ volatile("inb %1, %0" : "=a" (result) : "Nd" (port));
+    return result;
+}
+
+static inline void outb(uint16_t port, uint8_t data) {
+    __asm__ volatile("outb %0, %1" : : "a" (data), "Nd" (port));
+}
+
+int keyboard_ready(void) {
+    return (inb(0x64) & 1) != 0;
+}
+
+uint8_t read_keyboard(void) {
+    while (!keyboard_ready()) {
+        /* Wait for keyboard input */
+    }
+    return inb(0x60);
+}
+
+void handle_keyboard_input(void) {
+    uint8_t scancode = read_keyboard();
+    
+    /* Convert scancode to ASCII (simplified US layout) */
+    char c = 0;
+    
+    /* Only handle key press (not release) - high bit not set */
+    if (!(scancode & 0x80)) {
+        switch (scancode) {
+            case 0x1C: /* Enter */
+                c = '\n';
+                break;
+            case 0x0E: /* Backspace */
+                c = '\b';
+                break;
+            case 0x39: /* Space */
+                c = ' ';
+                break;
+            case 0x02: case 0x03: case 0x04: case 0x05: case 0x06: case 0x07: case 0x08: case 0x09: case 0x0A:
+            case 0x0B: case 0x0C: case 0x0D: /* 1-9, 0 */
+                c = scancode - 0x02 + '1';
+                if (scancode == 0x0B) c = '0';
+                break;
+            case 0x10: case 0x11: case 0x12: case 0x13: case 0x14: case 0x15: case 0x16: case 0x17: case 0x18: case 0x19:
+            case 0x1E: case 0x1F: case 0x20: case 0x21: case 0x22: case 0x23: case 0x24: case 0x25: case 0x26:
+                /* Q-P, A-L, Z-M */
+                if (scancode <= 0x19) {
+                    c = scancode - 0x10 + 'q';
+                } else if (scancode <= 0x26) {
+                    c = scancode - 0x1E + 'a';
+                }
+                break;
+        }
+        
+        /* Process the character */
+        if (c == '\n') {
+            /* Enter key - execute command */
+            console_putchar('\n');
+            input_buffer[input_pos] = '\0';
+            execute_command(input_buffer);
+            input_pos = 0;
+            command_executed = 1;  /* Mark command as executed */
+        } else if (c == '\b') {
+            /* Backspace key */
+            if (input_pos > 0) {
+                input_pos--;
+                cursor_x--;
+                if (cursor_x < 0) {
+                    cursor_x = VGA_WIDTH - 1;
+                    cursor_y--;
+                    if (cursor_y < 0) cursor_y = 0;
+                }
+                size_t pos = cursor_y * VGA_WIDTH + cursor_x;
+                VGA_BUFFER[pos * 2] = ' ';
+                VGA_BUFFER[pos * 2 + 1] = VGA_ATTR_DEFAULT;
+            }
+        } else if (c >= ' ' && c <= '~') {
+            /* Printable character */
+            if (input_pos < (int)(sizeof(input_buffer) - 1)) {
+                input_buffer[input_pos++] = c;
+                console_putchar(c);
+            }
+        }
+    }
+}
 
 /* Get build date/time - these are string literals for now */
 static const char *os_name = "AltoniumOS";
@@ -230,18 +325,24 @@ void kernel_main(void) {
     console_print("\n");
     console_print("Type 'help' for available commands\n\n");
     
-    /* Simple command loop - read from simulated input */
+    /* Main command loop */
     while (1) {
         console_print("> ");
-
-        /* In a real implementation, we would read from keyboard/serial */
-        /* For now, we'll demonstrate with pre-programmed commands */
         
-        /* This loop would normally read keyboard input */
+        /* Read command from keyboard */
+        input_pos = 0;
+        command_executed = 0;
+        
+        /* Wait for command input */
         while (1) {
-            /* Simulate command input - in real implementation would read from kbd */
-            /* For testing: auto-run help and fetch commands */
-            break;
+            if (keyboard_ready()) {
+                handle_keyboard_input();
+                /* Check if command was executed (Enter pressed) */
+                if (command_executed) {
+                    /* Command was executed, break to show new prompt */
+                    break;
+                }
+            }
         }
     }
 }
