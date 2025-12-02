@@ -69,35 +69,85 @@ uint8_t read_keyboard(void) {
 void handle_keyboard_input(void) {
     uint8_t scancode = read_keyboard();
     
-    /* Convert scancode to ASCII (simplified US layout) */
+    /* Convert scancode to ASCII (US layout) */
     char c = 0;
     
     /* Only handle key press (not release) - high bit not set */
     if (!(scancode & 0x80)) {
+        /* US keyboard layout mapping (unshifted) */
         switch (scancode) {
-            case 0x1C: /* Enter */
-                c = '\n';
-                break;
-            case 0x0E: /* Backspace */
-                c = '\b';
-                break;
-            case 0x39: /* Space */
-                c = ' ';
-                break;
-            case 0x02: case 0x03: case 0x04: case 0x05: case 0x06: case 0x07: case 0x08: case 0x09: case 0x0A:
-            case 0x0B: case 0x0C: case 0x0D: /* 1-9, 0 */
-                c = scancode - 0x02 + '1';
-                if (scancode == 0x0B) c = '0';
-                break;
-            case 0x10: case 0x11: case 0x12: case 0x13: case 0x14: case 0x15: case 0x16: case 0x17: case 0x18: case 0x19:
-            case 0x1E: case 0x1F: case 0x20: case 0x21: case 0x22: case 0x23: case 0x24: case 0x25: case 0x26:
-                /* Q-P, A-L, Z-M */
-                if (scancode <= 0x19) {
-                    c = scancode - 0x10 + 'q';
-                } else if (scancode <= 0x26) {
-                    c = scancode - 0x1E + 'a';
-                }
-                break;
+            /* Numbers 1-0 */
+            case 0x02: c = '1'; break;
+            case 0x03: c = '2'; break;
+            case 0x04: c = '3'; break;
+            case 0x05: c = '4'; break;
+            case 0x06: c = '5'; break;
+            case 0x07: c = '6'; break;
+            case 0x08: c = '7'; break;
+            case 0x09: c = '8'; break;
+            case 0x0A: c = '9'; break;
+            case 0x0B: c = '0'; break;
+            
+            /* Special characters on number row */
+            case 0x0C: c = '-'; break;  /* - = */
+            case 0x0D: c = '='; break;  /* = + */
+            
+            /* Top letter row (Q-P) */
+            case 0x10: c = 'q'; break;
+            case 0x11: c = 'w'; break;
+            case 0x12: c = 'e'; break;
+            case 0x13: c = 'r'; break;
+            case 0x14: c = 't'; break;
+            case 0x15: c = 'y'; break;
+            case 0x16: c = 'u'; break;
+            case 0x17: c = 'i'; break;
+            case 0x18: c = 'o'; break;
+            case 0x19: c = 'p'; break;
+            
+            /* Special characters on top row */
+            case 0x1A: c = '['; break;  /* [ { */
+            case 0x1B: c = ']'; break;  /* ] } */
+            
+            /* Middle letter row (A-L) */
+            case 0x1E: c = 'a'; break;
+            case 0x1F: c = 's'; break;
+            case 0x20: c = 'd'; break;
+            case 0x21: c = 'f'; break;
+            case 0x22: c = 'g'; break;
+            case 0x23: c = 'h'; break;
+            case 0x24: c = 'j'; break;
+            case 0x25: c = 'k'; break;
+            case 0x26: c = 'l'; break;
+            
+            /* Special characters on middle row */
+            case 0x27: c = ';'; break;  /* ; : */
+            case 0x28: c = '\''; break; /* ' " */
+            
+            /* Backtick and backslash */
+            case 0x29: c = '`'; break;  /* ` ~ */
+            case 0x2B: c = '\\'; break; /* \ | */
+            
+            /* Bottom letter row (Z-M) */
+            case 0x2C: c = 'z'; break;
+            case 0x2D: c = 'x'; break;
+            case 0x2E: c = 'c'; break;
+            case 0x2F: c = 'v'; break;
+            case 0x30: c = 'b'; break;
+            case 0x31: c = 'n'; break;
+            case 0x32: c = 'm'; break;
+            
+            /* Special characters on bottom row */
+            case 0x33: c = ','; break;  /* , < */
+            case 0x34: c = '.'; break;  /* . > */
+            case 0x35: c = '/'; break;  /* / ? */
+            
+            /* Space bar */
+            case 0x39: c = ' '; break;
+            
+            /* Control keys */
+            case 0x0E: c = '\b'; break;  /* Backspace */
+            case 0x1C: c = '\n'; break;  /* Enter */
+            case 0x0F: c = '\t'; break;  /* Tab */
         }
         
         /* Process the character */
