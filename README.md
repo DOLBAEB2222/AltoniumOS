@@ -1,4 +1,4 @@
-# MiniOS - A Simple Console-Based Operating System
+# AltoniumOS - A Simple Console-Based Operating System
 
 A minimal x86 operating system with console commands for system interaction and information retrieval.
 
@@ -40,16 +40,31 @@ make clean
 ### With QEMU (Recommended)
 
 ```bash
-# Run the kernel directly with multiboot support
+# Run the kernel directly with multiboot support (recommended)
 qemu-system-i386 -kernel dist/kernel.elf
 
-# Run from a bootable disk image
+# Run from a bootable disk image (real hardware simulation)
 qemu-system-i386 -drive file=dist/os.img,format=raw
+
+# Alternative disk image boot
+qemu-system-i386 -hda dist/os.img
 
 # For debugging with GDB
 qemu-system-i386 -kernel dist/kernel.elf -s -S &
 gdb dist/kernel.elf -ex "target remote :1234"
 ```
+
+### Multiboot Support
+
+AltoniumOS includes a Multiboot header compliant with the Multiboot specification. This allows it to be loaded by:
+- QEMU's `-kernel` option
+- GRUB bootloader
+- Other Multiboot-compliant boot loaders
+
+The Multiboot header is located at the beginning of the kernel image and contains:
+- Magic number: 0x1BADB002
+- Flags: 0x00000003
+- Checksum: -(magic + flags)
 
 ### Scripted Commands via QEMU
 
@@ -185,7 +200,7 @@ interact
 When the OS boots, you'll see a prompt:
 
 ```
-Welcome to MiniOS 1.0.0
+Welcome to AltoniumOS 1.0.0
 Type 'help' for available commands
 
 >
@@ -216,11 +231,11 @@ Hello, World!
 Display system information:
 ```
 > fetch
-OS: MiniOS
+OS: AltoniumOS
 Version: 1.0.0
 Architecture: x86
-Build Date: Dec  2 2024
-Build Time: 14:08:42
+Build Date: Dec  2 2025
+Build Time: 15:58:24
 ```
 
 #### clear
@@ -254,8 +269,19 @@ Halting CPU...
 
 ### Execution Flow
 
-1. **Bootloader** (`boot.asm`) - 16-bit real mode code that loads the kernel from disk
-2. **Kernel Entry** (`kernel_entry.asm`) - Initializes stack and interrupts, transitions to 32-bit protected mode
+1. **Bootloader** (`boot.asm`) - 16-bit real mode code that:
+   - Loads the kernel from disk (64 sectors = 32KB)
+   - Enables the A20 line for extended memory access
+   - Sets up a Global Descriptor Table (GDT)
+   - Switches to 32-bit protected mode
+   - Jumps to the kernel entry point at 0x10000
+
+2. **Kernel Entry** (`kernel_entry.asm`) - 32-bit protected mode entry:
+   - Includes Multiboot header for GRUB/QEMU compatibility
+   - Sets up the stack at 0x800000 (8MB)
+   - Calls the C kernel main function
+   - Provides CPU halt function for shutdown
+
 3. **Kernel Main** (`kernel.c`) - Implements command parsing and execution
 4. **VGA Driver** - Direct VGA buffer manipulation for text output (0xB8000)
 5. **Command Handlers** - Individual handlers for each console command

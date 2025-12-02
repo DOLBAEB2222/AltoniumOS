@@ -38,7 +38,7 @@ void handle_shutdown(void);
 extern void halt_cpu(void);
 
 /* Get build date/time - these are string literals for now */
-static const char *os_name = "MiniOS";
+static const char *os_name = "AltoniumOS";
 static const char *os_version = "1.0.0";
 static const char *os_arch = "x86";
 static const char *build_date = __DATE__;
