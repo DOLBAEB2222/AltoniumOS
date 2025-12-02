@@ -1,0 +1,19 @@
+# Build artifacts
+*.o
+*.bin
+*.iso
+
+# Build directories
+iso/
+
+# Editor and IDE files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-*
+
+# OS files
+.DS_Store
+Thumbs.db
