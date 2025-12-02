@@ -3,17 +3,31 @@ ENTRY(_start)
 SECTIONS {
     . = 0x10000;
 
-    .text : {
+    .multiboot : {
+        *(.multiboot)
+    }
+
+    .text ALIGN(4096) : {
         *(.text)
         *(.text.*)
     }
 
-    .data : {
-        *(.data)
-        *(.data.*)
+    .rodata ALIGN(4096) : {
+        *(.rodata)
+        *(.rodata.*)
     }
 
-    .bss : {
+    .eh_frame ALIGN(4096) : {
+        *(.eh_frame)
+    }
+
+    .data ALIGN(4096) : {
+        *(.data)
+        *(.data.*)
+        *(.got.plt)
+    }
+
+    .bss ALIGN(4096) : {
         *(.bss)
         *(.bss.*)
         *(COMMON)

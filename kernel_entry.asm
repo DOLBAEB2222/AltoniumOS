@@ -1,5 +1,18 @@
-; Kernel entry point
+; Kernel entry point with Multiboot header
 [BITS 32]
+
+; Multiboot header constants
+MULTIBOOT_MAGIC     equ 0x1BADB002
+MULTIBOOT_FLAGS     equ 0x00000003
+MULTIBOOT_CHECKSUM  equ -(MULTIBOOT_MAGIC + MULTIBOOT_FLAGS)
+
+[SECTION .multiboot]
+align 4
+multiboot_header:
+    dd MULTIBOOT_MAGIC
+    dd MULTIBOOT_FLAGS
+    dd MULTIBOOT_CHECKSUM
+
 [SECTION .text]
 
 extern kernel_main
@@ -8,8 +21,8 @@ global _start
 global halt_cpu
 
 _start:
-    ; Set up stack
-    mov esp, 0xFFFFF
+    ; Set up stack (place it at 8MB for safety)
+    mov esp, 0x800000
     
     ; Call kernel main function (in C)
     call kernel_main
@@ -23,3 +36,6 @@ halt_cpu:
     cli
     hlt
     jmp halt_cpu
+
+; Mark stack as non-executable (fixes linker warning)
+section .note.GNU-stack noalloc noexec nowrite progbits

@@ -1,48 +1,90 @@
-; Simple bootloader for OS console commands
-; This is a minimal 16-bit real mode bootloader that loads and executes the kernel
+; Minimal bootloader for AltoniumOS
+; Loads kernel from disk and switches to protected mode
 
 [BITS 16]
 [ORG 0x7C00]
 
 start:
-    ; Clear screen
-    mov ax, 0x0003
-    int 0x10
+    ; Setup segments
+    cli
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    mov sp, 0x7C00
+    sti
 
-    ; Print welcome message
-    mov si, welcome_msg
-    call print_string
+    ; Print loading message
+    mov si, msg
+    call print
 
-    ; Load kernel from disk (simplified - assume it's at sector 2)
-    mov ah, 0x02          ; Read sectors
-    mov al, 10            ; Read 10 sectors
+    ; Load kernel from disk to 0x10000
+    mov ah, 0x02          ; BIOS read sectors
+    mov al, 64            ; Read 64 sectors (32KB)
     mov ch, 0             ; Cylinder 0
     mov cl, 2             ; Starting sector 2
     mov dh, 0             ; Head 0
-    mov dl, 0x80          ; Drive 0x80 (first hard disk)
-    mov bx, 0x1000        ; Load to 0x1000
+    mov dl, 0x80          ; Drive 0x80
+    mov bx, 0x1000        ; Segment
     mov es, bx
-    xor bx, bx
+    xor bx, bx            ; Offset 0
     int 0x13
+    jc error
 
-    ; Jump to kernel
-    jmp 0x1000:0x0000
+    ; Enable A20
+    in al, 0x92
+    or al, 2
+    out 0x92, al
 
-print_string:
-    mov ah, 0x0E          ; Print character
+    ; Load GDT and switch to protected mode
+    cli
+    lgdt [gdt_desc]
+    mov eax, cr0
+    or eax, 1
+    mov cr0, eax
+    jmp 0x08:pm_start
+
+error:
+    mov si, err_msg
+    call print
+    jmp $
+
+print:
+    mov ah, 0x0E
 .loop:
-    lodsb                 ; Load byte from [si]
-    cmp al, 0             ; Check for null terminator
-    je .done
-    int 0x10              ; Print character in al
+    lodsb
+    test al, al
+    jz .done
+    int 0x10
     jmp .loop
 .done:
     ret
 
-welcome_msg:
-    db 'Loading OS...', 0x0D, 0x0A, 0
+[BITS 32]
+pm_start:
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
+    mov esp, 0x90000
+    jmp 0x10000
 
-; Padding to 510 bytes
-times 510 - ($ - $$) db 0
-; Boot signature
+[BITS 16]
+
+; GDT
+gdt:
+    dq 0
+    dw 0xFFFF, 0, 0x9A00, 0xCF    ; Code segment
+    dw 0xFFFF, 0, 0x9200, 0xCF    ; Data segment
+
+gdt_desc:
+    dw $ - gdt - 1
+    dd gdt
+
+msg: db 'Loading AltoniumOS...', 13, 10, 0
+err_msg: db 'Disk error!', 13, 10, 0
+
+times 510-($-$$) db 0
 dw 0xAA55
