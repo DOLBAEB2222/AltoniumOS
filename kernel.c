@@ -27,6 +27,10 @@ static char input_buffer[256];
 static int input_pos = 0;
 static int command_executed = 0;
 
+/* Prompt line tracking */
+static int prompt_line_start_x = 0;
+static int prompt_line_y = 0;
+
 /* Forward declarations */
 void kernel_main(void);
 void vga_clear(void);
@@ -40,6 +44,8 @@ void handle_help(void);
 void handle_shutdown(void);
 void execute_command(const char *cmd_line);
 void handle_keyboard_input(void);
+void update_hardware_cursor(int x, int y);
+void render_prompt_line(void);
 
 /* External: defined in assembly */
 extern void halt_cpu(void);
@@ -53,6 +59,18 @@ static inline uint8_t inb(uint16_t port) {
 
 static inline void outb(uint16_t port, uint8_t data) {
     __asm__ volatile("outb %0, %1" : : "a" (data), "Nd" (port));
+}
+
+void update_hardware_cursor(int x, int y) {
+    uint16_t pos = y * VGA_WIDTH + x;
+    
+    /* Write cursor position high byte */
+    outb(0x3D4, 0x0E);
+    outb(0x3D5, (pos >> 8) & 0xFF);
+    
+    /* Write cursor position low byte */
+    outb(0x3D4, 0x0F);
+    outb(0x3D5, pos & 0xFF);
 }
 
 int keyboard_ready(void) {
@@ -159,24 +177,16 @@ void handle_keyboard_input(void) {
             input_pos = 0;
             command_executed = 1;  /* Mark command as executed */
         } else if (c == '\b') {
-            /* Backspace key */
+            /* Backspace key - remove from buffer and redraw prompt line */
             if (input_pos > 0) {
                 input_pos--;
-                cursor_x--;
-                if (cursor_x < 0) {
-                    cursor_x = VGA_WIDTH - 1;
-                    cursor_y--;
-                    if (cursor_y < 0) cursor_y = 0;
-                }
-                size_t pos = cursor_y * VGA_WIDTH + cursor_x;
-                VGA_BUFFER[pos * 2] = ' ';
-                VGA_BUFFER[pos * 2 + 1] = VGA_ATTR_DEFAULT;
+                render_prompt_line();
             }
         } else if (c >= ' ' && c <= '~') {
-            /* Printable character */
+            /* Printable character - add to buffer and redraw prompt line */
             if (input_pos < (int)(sizeof(input_buffer) - 1)) {
                 input_buffer[input_pos++] = c;
-                console_putchar(c);
+                render_prompt_line();
             }
         }
     }
@@ -196,6 +206,38 @@ void get_cpuid(uint32_t eax, cpuid_t *regs) {
     regs->ebx = 0;
     regs->ecx = 0;
     regs->edx = 0;
+}
+
+void render_prompt_line(void) {
+    int line_y = prompt_line_y;
+    
+    /* Clear from prompt start to end of line */
+    for (int i = prompt_line_start_x; i < VGA_WIDTH; i++) {
+        size_t pos = line_y * VGA_WIDTH + i;
+        VGA_BUFFER[pos * 2] = ' ';
+        VGA_BUFFER[pos * 2 + 1] = VGA_ATTR_DEFAULT;
+    }
+    
+    /* Write input buffer content */
+    for (int i = 0; i < input_pos; i++) {
+        size_t pos = line_y * VGA_WIDTH + (prompt_line_start_x + i);
+        if (prompt_line_start_x + i < VGA_WIDTH) {
+            VGA_BUFFER[pos * 2] = input_buffer[i];
+            VGA_BUFFER[pos * 2 + 1] = VGA_ATTR_DEFAULT;
+        }
+    }
+    
+    /* Write prompt marker (>) at the end of input */
+    if (prompt_line_start_x + input_pos < VGA_WIDTH) {
+        size_t pos = line_y * VGA_WIDTH + (prompt_line_start_x + input_pos);
+        VGA_BUFFER[pos * 2] = '>';
+        VGA_BUFFER[pos * 2 + 1] = VGA_ATTR_DEFAULT;
+    }
+    
+    /* Update hardware cursor position (after the input, before the >) */
+    cursor_x = prompt_line_start_x + input_pos;
+    cursor_y = line_y;
+    update_hardware_cursor(cursor_x, cursor_y);
 }
 
 /* Write a character to VGA buffer */
@@ -226,6 +268,9 @@ void vga_write_char(char c, uint8_t attr) {
             cursor_y = 0;
         }
     }
+    
+    /* Update hardware cursor */
+    update_hardware_cursor(cursor_x, cursor_y);
 }
 
 /* Clear VGA buffer */
@@ -236,6 +281,7 @@ void vga_clear(void) {
     }
     cursor_x = 0;
     cursor_y = 0;
+    update_hardware_cursor(cursor_x, cursor_y);
 }
 
 /* Print a string */
@@ -377,11 +423,16 @@ void kernel_main(void) {
     
     /* Main command loop */
     while (1) {
-        console_print("> ");
+        /* Initialize prompt line at current cursor position */
+        prompt_line_start_x = cursor_x;
+        prompt_line_y = cursor_y;
         
-        /* Read command from keyboard */
+        /* Reset input buffer */
         input_pos = 0;
         command_executed = 0;
+        
+        /* Draw initial prompt (just the > marker) */
+        render_prompt_line();
         
         /* Wait for command input */
         while (1) {
