@@ -375,6 +375,28 @@ int read_token(const char **input, char *dest, int max_len) {
     return len;
 }
 
+int copy_path_argument(const char *input, char *dest, size_t max_len) {
+    if (!input || !dest || max_len == 0) {
+        if (dest && max_len > 0) {
+            dest[0] = '\0';
+        }
+        return 0;
+    }
+    size_t write = 0;
+    while (*input && *input != '\n' && *input != '\r') {
+        if (write + 1 >= max_len) {
+            dest[write] = '\0';
+            return -1;
+        }
+        dest[write++] = *input++;
+    }
+    while (write > 0 && (dest[write - 1] == ' ' || dest[write - 1] == '\t')) {
+        write--;
+    }
+    dest[write] = '\0';
+    return (int)write;
+}
+
 void print_unsigned(uint32_t value) {
     char buffer[16];
     int pos = 0;
@@ -640,12 +662,20 @@ void handle_ls(const char *args) {
         return;
     }
     const char *path = skip_whitespace(args);
-    int has_path = (path && *path);
+    char path_buf[FAT12_PATH_MAX];
+    int path_len = 0;
+    if (path && *path) {
+        path_len = copy_path_argument(path, path_buf, sizeof(path_buf));
+        if (path_len < 0) {
+            console_print("ls failed (path too long)\n");
+            return;
+        }
+    }
     ls_context_t ctx;
     ctx.count = 0;
     int result;
-    if (has_path) {
-        result = fat12_iterate_path(path, ls_callback, &ctx);
+    if (path_len > 0) {
+        result = fat12_iterate_path(path_buf, ls_callback, &ctx);
     } else {
         result = fat12_iterate_current_directory(ls_callback, &ctx);
     }
@@ -675,10 +705,20 @@ void handle_cd(const char *args) {
         return;
     }
     const char *path = skip_whitespace(args);
-    if (!path || *path == '\0') {
-        path = "/";
+    char path_buf[FAT12_PATH_MAX];
+    int path_len = 0;
+    if (path && *path) {
+        path_len = copy_path_argument(path, path_buf, sizeof(path_buf));
+        if (path_len < 0) {
+            console_print("cd failed (path too long)\n");
+            return;
+        }
     }
-    int result = fat12_change_directory(path);
+    if (path_len == 0) {
+        path_buf[0] = '/';
+        path_buf[1] = '\0';
+    }
+    int result = fat12_change_directory(path_buf);
     if (result != FAT12_OK) {
         console_print("cd failed");
         print_fs_error(result);
@@ -695,12 +735,18 @@ void handle_cat(const char *args) {
         return;
     }
     const char *path = skip_whitespace(args);
-    if (!path || *path == '\0') {
+    char path_buf[FAT12_PATH_MAX];
+    int path_len = copy_path_argument(path, path_buf, sizeof(path_buf));
+    if (path_len < 0) {
+        console_print("cat failed (path too long)\n");
+        return;
+    }
+    if (path_len == 0) {
         console_print("Usage: cat FILE\n");
         return;
     }
     uint32_t size = 0;
-    int result = fat12_read_file(path, fs_io_buffer, FS_IO_BUFFER_SIZE - 1, &size);
+    int result = fat12_read_file(path_buf, fs_io_buffer, FS_IO_BUFFER_SIZE - 1, &size);
     if (result != FAT12_OK) {
         console_print("cat failed");
         print_fs_error(result);
@@ -721,7 +767,7 @@ void handle_write_command(const char *args) {
         return;
     }
     const char *cursor = args;
-    char name_buf[64];
+    char name_buf[FAT12_PATH_MAX];
     if (read_token(&cursor, name_buf, sizeof(name_buf)) == 0) {
         console_print("Usage: write NAME TEXT\n");
         return;
@@ -756,7 +802,7 @@ void handle_mkdir_command(const char *args) {
         return;
     }
     const char *cursor = args;
-    char name_buf[64];
+    char name_buf[FAT12_PATH_MAX];
     if (read_token(&cursor, name_buf, sizeof(name_buf)) == 0) {
         console_print("Usage: mkdir NAME\n");
         return;
@@ -777,7 +823,7 @@ void handle_rm_command(const char *args) {
         return;
     }
     const char *cursor = args;
-    char name_buf[64];
+    char name_buf[FAT12_PATH_MAX];
     if (read_token(&cursor, name_buf, sizeof(name_buf)) == 0) {
         console_print("Usage: rm NAME\n");
         return;

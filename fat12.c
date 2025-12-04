@@ -1028,11 +1028,17 @@ int fat12_write_file(const char *name, const uint8_t *data, uint32_t size) {
     }
 
     fat12_raw_dir_entry_t existing;
+    uint16_t old_cluster = 0;
+    int has_existing = 0;
     res = fat12_find_entry(dir_cluster, short_name, &existing, 0, 0);
     if (res == FAT12_OK) {
-        if (existing.first_cluster_low >= 2) {
-            fat12_free_chain(existing.first_cluster_low);
+        if (existing.attr & FAT12_ATTR_DIRECTORY) {
+            return FAT12_ERR_ALREADY_EXISTS;
         }
+        has_existing = 1;
+        old_cluster = existing.first_cluster_low;
+    } else if (res != FAT12_ERR_NOT_FOUND) {
+        return res;
     }
 
     uint16_t first_cluster = 0;
@@ -1079,6 +1085,10 @@ int fat12_write_file(const char *name, const uint8_t *data, uint32_t size) {
             fat12_free_chain(first_cluster);
         }
         return res;
+    }
+
+    if (has_existing && old_cluster >= 2 && old_cluster != first_cluster) {
+        fat12_free_chain(old_cluster);
     }
 
     fat12_flush_root();

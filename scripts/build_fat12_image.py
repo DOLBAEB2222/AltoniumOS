@@ -123,6 +123,8 @@ def build_image(boot_path: str, kernel_path: str, output_path: str) -> None:
 
     def add_root_entry(name: str, attr: int, first_cluster: int, size: int):
         nonlocal root_index
+        if root_index >= ROOT_ENTRIES:
+            raise RuntimeError("Root directory full while seeding image")
         entry = build_dir_entry(to_short_name(name), attr, first_cluster, size)
         offset = root_index * 32
         root_dir[offset:offset + 32] = entry
