@@ -24,8 +24,11 @@ $(BUILD_DIR)/kernel_entry.o: kernel_entry.asm dirs
 $(BUILD_DIR)/kernel.o: kernel.c dirs
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(DIST_DIR)/kernel.elf: $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o dirs
-	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o
+$(BUILD_DIR)/disk.o: disk.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(DIST_DIR)/kernel.elf: $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/disk.o dirs
+	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/disk.o
 
 $(DIST_DIR)/kernel.bin: $(DIST_DIR)/kernel.elf
 	objcopy -O binary $< $@

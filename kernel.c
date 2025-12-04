@@ -42,6 +42,7 @@ void handle_echo(const char *args);
 void handle_fetch(void);
 void handle_help(void);
 void handle_shutdown(void);
+void handle_disk(void);
 void execute_command(const char *cmd_line);
 void handle_keyboard_input(void);
 void update_hardware_cursor(int x, int y);
@@ -49,6 +50,9 @@ void render_prompt_line(void);
 
 /* External: defined in assembly */
 extern void halt_cpu(void);
+
+/* Include disk driver */
+#include "disk.h"
 
 /* Keyboard input functions */
 static inline uint8_t inb(uint16_t port) {
@@ -367,6 +371,7 @@ void handle_help(void) {
     console_print("  clear     - Clear the screen\n");
     console_print("  echo TEXT - Print text to the screen\n");
     console_print("  fetch     - Print OS and system information\n");
+    console_print("  disk      - Test disk I/O and show disk information\n");
     console_print("  shutdown  - Shut down the system\n");
     console_print("  help      - Display this help message\n");
 }
@@ -375,6 +380,128 @@ void handle_shutdown(void) {
     console_print("Attempting system shutdown...\n");
     console_print("Halting CPU...\n");
     halt_cpu();
+}
+
+void handle_disk(void) {
+    console_print("Disk Information:\n");
+    
+    /* Test disk initialization */
+    int result = disk_init();
+    if (result != 0) {
+        console_print("  Disk initialization FAILED (error ");
+        if (result < 0) {
+            console_print("-");
+            result = -result;
+        }
+        char error_str[16];
+        int pos = 0;
+        if (result == 0) {
+            error_str[pos++] = '0';
+        } else {
+            char temp[16];
+            int temp_pos = 0;
+            while (result > 0) {
+                temp[temp_pos++] = '0' + (result % 10);
+                result /= 10;
+            }
+            for (int i = temp_pos - 1; i >= 0; i--) {
+                error_str[pos++] = temp[i];
+            }
+        }
+        error_str[pos] = '\0';
+        console_print(error_str);
+        console_print(")\n");
+        return;
+    }
+    
+    console_print("  Disk initialization: OK\n");
+    
+    /* Test reading first sector */
+    uint8_t buffer[512];
+    result = disk_read_sector(0, buffer);
+    if (result != 0) {
+        console_print("  Sector 0 read: FAILED (error ");
+        if (result < 0) {
+            console_print("-");
+            result = -result;
+        }
+        char error_str[16];
+        int pos = 0;
+        if (result == 0) {
+            error_str[pos++] = '0';
+        } else {
+            char temp[16];
+            int temp_pos = 0;
+            while (result > 0) {
+                temp[temp_pos++] = '0' + (result % 10);
+                result /= 10;
+            }
+            for (int i = temp_pos - 1; i >= 0; i--) {
+                error_str[pos++] = temp[i];
+            }
+        }
+        error_str[pos] = '\0';
+        console_print(error_str);
+        console_print(")\n");
+        return;
+    }
+    
+    console_print("  Sector 0 read: OK\n");
+    
+    /* Show first 64 bytes of MBR as hex dump */
+    console_print("  First 64 bytes of sector 0:\n");
+    for (int i = 0; i < 64; i++) {
+        if (i % 16 == 0) {
+            console_print("    ");
+        }
+        
+        /* Print hex value (simplified) */
+        uint8_t byte = buffer[i];
+        char hex_chars[] = "0123456789ABCDEF";
+        char hex_byte[3];
+        hex_byte[0] = hex_chars[(byte >> 4) & 0xF];
+        hex_byte[1] = hex_chars[byte & 0xF];
+        hex_byte[2] = '\0';
+        console_print(" ");
+        console_print(hex_byte);
+        
+        if (i % 16 == 15) {
+            console_print("\n");
+        }
+    }
+    if (64 % 16 != 0) {
+        console_print("\n");
+    }
+    
+    console_print("  Disk self-test: ");
+    result = disk_self_test();
+    if (result != 0) {
+        console_print("FAILED (error ");
+        if (result < 0) {
+            console_print("-");
+            result = -result;
+        }
+        char error_str[16];
+        int pos = 0;
+        if (result == 0) {
+            error_str[pos++] = '0';
+        } else {
+            char temp[16];
+            int temp_pos = 0;
+            while (result > 0) {
+                temp[temp_pos++] = '0' + (result % 10);
+                result /= 10;
+            }
+            for (int i = temp_pos - 1; i >= 0; i--) {
+                error_str[pos++] = temp[i];
+            }
+        }
+        error_str[pos] = '\0';
+        console_print(error_str);
+        console_print(")\n");
+    } else {
+        console_print("OK\n");
+    }
 }
 
 /* Parse and execute commands */
@@ -398,6 +525,9 @@ void execute_command(const char *cmd_line) {
     } else if (strncmp_impl(cmd_line, "fetch", 5) == 0 && 
                (cmd_line[5] == '\0' || cmd_line[5] == ' ' || cmd_line[5] == '\n')) {
         handle_fetch();
+    } else if (strncmp_impl(cmd_line, "disk", 4) == 0 && 
+               (cmd_line[4] == '\0' || cmd_line[4] == ' ' || cmd_line[4] == '\n')) {
+        handle_disk();
     } else if (strncmp_impl(cmd_line, "shutdown", 8) == 0 && 
                (cmd_line[8] == '\0' || cmd_line[8] == ' ' || cmd_line[8] == '\n')) {
         handle_shutdown();
@@ -419,6 +549,70 @@ void kernel_main(void) {
     console_print(" ");
     console_print(os_version);
     console_print("\n");
+    
+    /* Initialize disk driver */
+    console_print("Initializing disk driver... ");
+    int disk_result = disk_init();
+    if (disk_result != 0) {
+        console_print("FAILED (error ");
+        /* Print error code */
+        if (disk_result < 0) {
+            console_print("-");
+            disk_result = -disk_result;
+        }
+        char error_str[16];
+        int pos = 0;
+        if (disk_result == 0) {
+            error_str[pos++] = '0';
+        } else {
+            char temp[16];
+            int temp_pos = 0;
+            while (disk_result > 0) {
+                temp[temp_pos++] = '0' + (disk_result % 10);
+                disk_result /= 10;
+            }
+            for (int i = temp_pos - 1; i >= 0; i--) {
+                error_str[pos++] = temp[i];
+            }
+        }
+        error_str[pos] = '\0';
+        console_print(error_str);
+        console_print(")\n");
+    } else {
+        console_print("OK\n");
+        
+        /* Run disk self-test */
+        console_print("Running disk self-test... ");
+        int test_result = disk_self_test();
+        if (test_result != 0) {
+            console_print("FAILED (error ");
+            if (test_result < 0) {
+                console_print("-");
+                test_result = -test_result;
+            }
+            char error_str[16];
+            int pos = 0;
+            if (test_result == 0) {
+                error_str[pos++] = '0';
+            } else {
+                char temp[16];
+                int temp_pos = 0;
+                while (test_result > 0) {
+                    temp[temp_pos++] = '0' + (test_result % 10);
+                    test_result /= 10;
+                }
+                for (int i = temp_pos - 1; i >= 0; i--) {
+                    error_str[pos++] = temp[i];
+                }
+            }
+            error_str[pos] = '\0';
+            console_print(error_str);
+            console_print(")\n");
+        } else {
+            console_print("OK\n");
+        }
+    }
+    
     console_print("Type 'help' for available commands\n\n");
     
     /* Main command loop */
