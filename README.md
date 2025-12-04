@@ -9,8 +9,20 @@ This OS includes the following console commands:
 - **clear** - Clear the VGA text buffer and reset the screen
 - **echo** - Write text to the console
 - **fetch** - Display OS and system information (name, version, architecture, build date/time)
+- **disk** - Test disk I/O and show disk information including sector reads and hex dump
 - **shutdown** - Gracefully shut down the system (attempts ACPI power-off via port 0x604)
 - **help** - Display all available commands
+
+### Disk I/O Features
+
+The OS now includes an ATA PIO driver for disk I/O operations:
+
+- Primary IDE channel support (I/O ports 0x1F0-0x1F7)
+- LBA addressing for up to 28-bit sector addresses
+- 512-byte sector read/write operations
+- Multi-sector read/write support
+- Built-in disk self-test and validation
+- Boot sector signature detection (0x55AA)
 
 ## Building
 
@@ -46,6 +58,9 @@ qemu-system-i386 -kernel dist/kernel.elf
 # Run from a bootable disk image (real hardware simulation)
 qemu-system-i386 -drive file=dist/os.img,format=raw
 
+# Run with disk I/O support (for testing disk commands)
+qemu-system-i386 -kernel dist/kernel.elf -drive format=raw,file=dist/os.img,if=ide
+
 # Alternative disk image boot
 qemu-system-i386 -hda dist/os.img
 
@@ -53,6 +68,28 @@ qemu-system-i386 -hda dist/os.img
 qemu-system-i386 -kernel dist/kernel.elf -s -S &
 gdb dist/kernel.elf -ex "target remote :1234"
 ```
+
+### Testing Disk I/O
+
+To test the disk I/O functionality:
+
+1. **Boot with disk support:**
+   ```bash
+   qemu-system-i386 -kernel dist/kernel.elf -drive format=raw,file=dist/os.img,if=ide
+   ```
+
+2. **At the command prompt, type:**
+   ```
+   disk
+   ```
+
+3. **Expected output:**
+   - Disk initialization status
+   - Sector 0 read test
+   - First 64 bytes hex dump of MBR
+   - Disk self-test results
+
+The disk driver will automatically initialize during boot and report any errors if the disk cannot be detected.
 
 ### Multiboot Support
 

@@ -14,6 +14,11 @@ make bootable       # Create bootable disk image
 qemu-system-i386 -kernel dist/kernel.elf
 ```
 
+### Run with Disk I/O Support
+```bash
+qemu-system-i386 -kernel dist/kernel.elf -drive format=raw,file=dist/os.img,if=ide
+```
+
 ### Run from Bootable Disk
 ```bash
 qemu-system-i386 -drive file=dist/os.img,format=raw
@@ -29,6 +34,8 @@ make clean && make build
 When AltoniumOS boots, you'll see:
 ```
 Welcome to AltoniumOS 1.0.0
+Initializing disk driver... OK
+Running disk self-test... OK
 Type 'help' for available commands
 
 >
@@ -40,7 +47,16 @@ Type 'help' for available commands
 - `clear` - Clear the screen
 - `echo <text>` - Print text to console
 - `fetch` - Display system information
+- `disk` - Test disk I/O and show disk information
 - `shutdown` - Shut down the system
+
+### Testing Disk I/O
+
+To test the disk functionality:
+
+1. Boot with disk support (see command above)
+2. Type `disk` at the prompt
+3. You should see disk initialization, sector read test, and hex dump
 
 ## Project Status
 
@@ -50,12 +66,17 @@ Type 'help' for available commands
 ✅ Compatible with real hardware  
 ✅ Zero compilation warnings  
 ✅ All tests passing  
+✅ ATA PIO disk driver implemented  
+✅ LBA addressing support  
+✅ Sector read/write operations  
 
 ## Files
 
 - `boot.asm` - Bootloader (512 bytes)
 - `kernel_entry.asm` - Kernel entry with Multiboot header
 - `kernel.c` - Main kernel code
+- `disk.c` - ATA PIO disk driver
+- `disk.h` - Disk driver header
 - `linker.ld` - Linker script
 - `test_boot.sh` - Automated tests
 
@@ -68,4 +89,4 @@ Type 'help' for available commands
 
 ## Support
 
-For issues or questions, see the full documentation in README.md
+For issues or questions, see full documentation in README.md
