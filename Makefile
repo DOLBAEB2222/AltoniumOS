@@ -27,8 +27,11 @@ $(BUILD_DIR)/kernel.o: kernel.c dirs
 $(BUILD_DIR)/disk.o: disk.c dirs
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(DIST_DIR)/kernel.elf: $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/disk.o dirs
-	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/disk.o
+$(BUILD_DIR)/fat12.o: fat12.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(DIST_DIR)/kernel.elf: $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/disk.o $(BUILD_DIR)/fat12.o dirs
+	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/disk.o $(BUILD_DIR)/fat12.o
 
 $(DIST_DIR)/kernel.bin: $(DIST_DIR)/kernel.elf
 	objcopy -O binary $< $@
@@ -36,12 +39,7 @@ $(DIST_DIR)/kernel.bin: $(DIST_DIR)/kernel.elf
 $(DIST_DIR)/boot.bin: boot.asm dirs
 	$(AS) -f bin -o $@ $<
 
-bootable: $(DIST_DIR)/boot.bin $(DIST_DIR)/kernel.bin
-	@echo "Creating bootable image..."
-	@dd if=/dev/zero of=$(DIST_DIR)/os.img bs=1M count=10 2>/dev/null
-	@dd if=$(DIST_DIR)/boot.bin of=$(DIST_DIR)/os.img bs=512 count=1 conv=notrunc 2>/dev/null
-	@dd if=$(DIST_DIR)/kernel.bin of=$(DIST_DIR)/os.img bs=512 seek=1 conv=notrunc 2>/dev/null
-	@echo "Bootable image created at $(DIST_DIR)/os.img"
+bootable: img
 
 iso: $(DIST_DIR)/kernel.elf
 	@echo "Creating bootable ISO image..."
@@ -51,12 +49,10 @@ iso: $(DIST_DIR)/kernel.elf
 	@grub-mkrescue -o $(DIST_DIR)/os.iso $(DIST_DIR)/iso 2>/dev/null
 	@echo "Bootable ISO image created at $(DIST_DIR)/os.iso"
 
-img: $(DIST_DIR)/boot.bin $(DIST_DIR)/kernel.bin
-	@echo "Creating raw disk image..."
-	@dd if=/dev/zero of=$(DIST_DIR)/os.img bs=1M count=10 2>/dev/null
-	@dd if=$(DIST_DIR)/boot.bin of=$(DIST_DIR)/os.img bs=512 count=1 conv=notrunc 2>/dev/null
-	@dd if=$(DIST_DIR)/kernel.bin of=$(DIST_DIR)/os.img bs=512 seek=1 conv=notrunc 2>/dev/null
-	@echo "Raw disk image created at $(DIST_DIR)/os.img"
+img: $(DIST_DIR)/boot.bin $(DIST_DIR)/kernel.bin scripts/build_fat12_image.py
+	@echo "Building FAT12 disk image..."
+	@python3 scripts/build_fat12_image.py --boot $(DIST_DIR)/boot.bin --kernel $(DIST_DIR)/kernel.bin --output $(DIST_DIR)/os.img
+	@echo "FAT12 disk image created at $(DIST_DIR)/os.img"
 
 run-iso: iso
 	@echo "Run ISO with: qemu-system-i386 -cdrom $(DIST_DIR)/os.iso"

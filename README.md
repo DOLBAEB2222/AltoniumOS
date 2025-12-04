@@ -6,12 +6,19 @@ A minimal x86 operating system with console commands for system interaction and 
 
 This OS includes the following console commands:
 
-- **clear** - Clear the VGA text buffer and reset the screen
-- **echo** - Write text to the console
-- **fetch** - Display OS and system information (name, version, architecture, build date/time)
-- **disk** - Test disk I/O and show disk information including sector reads and hex dump
-- **shutdown** - Gracefully shut down the system (attempts ACPI power-off via port 0x604)
-- **help** - Display all available commands
+- **clear** – Clear the VGA text buffer and reset the screen
+- **echo** – Write text to the console
+- **fetch** – Display OS and system information (name, version, architecture, build date/time)
+- **disk** – Test raw disk I/O and show sector diagnostics
+- **ls [PATH]** – List files and directories from the current working directory or a supplied path
+- **pwd** – Display the current working directory
+- **cd PATH** – Change the current working directory (supports absolute/relative paths and `..`)
+- **cat FILE** – Dump the contents of a file stored on the FAT12 volume
+- **write FILE TEXT** – Create or overwrite an 8.3 text file with the provided content
+- **mkdir NAME** – Create a directory inside the current working directory
+- **rm FILE** – Delete a file from the current working directory
+- **shutdown** – Gracefully shut down the system (attempts ACPI power-off via port 0x604)
+- **help** – Display all available commands and usage hints
 
 ### Disk I/O Features
 
@@ -24,6 +31,17 @@ The OS now includes an ATA PIO driver for disk I/O operations:
 - Built-in disk self-test and validation
 - Boot sector signature detection (0x55AA)
 
+### FAT12 Filesystem Layer
+
+On top of the ATA driver, AltoniumOS now mounts a FAT12 volume during boot:
+
+- Parses the BIOS Parameter Block and caches both FAT copies and the root directory
+- Computes root/data offsets for a 10 MB, 8-sector-per-cluster FAT12 layout (128 reserved sectors keep the kernel contiguous)
+- Seeds the disk image with sample content (`README.TXT`, `SYSTEM.CFG`, and `DOCS/INFO.TXT`)
+- Shell commands (`ls`, `pwd`, `cd`, `cat`, `write`, `mkdir`, `rm`) call into the FAT12 core for traversal and file manipulation
+- Every update touches both FAT copies and flushes directory metadata back to disk
+- Limitations: 8.3 uppercase filenames, small text-only writes via the shell (16 KB buffer), and simple error handling (invalid names, disk full, non-directory targets)
+
 ## Building
 
 ### Prerequisites
@@ -31,6 +49,7 @@ The OS now includes an ATA PIO driver for disk I/O operations:
 - `nasm` (Netwide Assembler) for assembling x86 code
 - `gcc` with i386 support (32-bit) for compiling C code
 - `binutils` (ld, objcopy) for linking and binary conversion
+- `python3` (for generating the FAT12 disk image)
 - `make` for building
 - `qemu-system-i386` for testing (optional)
 
@@ -40,8 +59,8 @@ The OS now includes an ATA PIO driver for disk I/O operations:
 # Build the kernel ELF binary
 make build
 
-# Create a bootable disk image (requires parted/fdisk)
-make bootable
+# Create the FAT12 disk image (make bootable is an alias)
+make img
 
 # Clean build artifacts
 make clean
@@ -90,6 +109,27 @@ To test the disk I/O functionality:
    - Disk self-test results
 
 The disk driver will automatically initialize during boot and report any errors if the disk cannot be detected.
+
+### Working with the FAT12 volume
+
+Once the disk driver is online, the FAT12 layer is mounted automatically. The bundled `dist/os.img` contains a few helper files you can experiment with:
+
+```text
+ls
+[DIR] DOCS
+      README.TXT (92 bytes)
+      SYSTEM.CFG (42 bytes)
+```
+
+```
+cd docs
+pwd
+/DOCS
+cat INFO.TXT
+Sample notes live inside DOCS/INFO.TXT
+```
+
+The `write` command stores the remainder of the line as file contents (up to ~16 KB per write), `mkdir` creates new directories, and `rm` deletes regular files. All filenames must follow the DOS 8.3 convention (uppercase letters, numbers, `_` or `-`).
 
 ### Multiboot Support
 
@@ -298,6 +338,36 @@ clear>
 >
 ```
 
+#### ls / pwd / cd
+Navigate the FAT12 filesystem:
+```
+ls>
+[DIR] DOCS
+      README.TXT (92 bytes)
+      SYSTEM.CFG (42 bytes)
+
+cd docs>
+pwd>
+/DOCS
+```
+
+#### cat
+Print file contents:
+```
+cat README.TXT>
+Welcome to AltoniumOS FAT12 volume!
+Use 'ls', 'cat', and 'write' inside the kernel shell.
+```
+
+#### write
+Create or overwrite a text file (8.3 name, rest of the line becomes content):
+```
+write NOTES.TXT Remember to demo FAT12>
+Wrote 22 bytes
+cat NOTES.TXT>
+Remember to demo FAT12
+```
+
 #### shutdown
 Shut down the system (initiates ACPI power-off):
 ```
@@ -312,10 +382,14 @@ Halting CPU...
 
 ```
 .
-├── boot.asm           - x86 16-bit bootloader
+├── boot.asm           - x86 16-bit bootloader (now with a FAT12 BPB)
 ├── kernel_entry.asm   - x86 32-bit kernel entry point and low-level I/O
-├── kernel.c           - Main kernel code with command handlers
+├── kernel.c           - Main kernel code with shell and command handlers
+├── disk.c / disk.h    - ATA PIO driver for raw sector access
+├── fat12.c / fat12.h  - FAT12 filesystem core (BPB parsing, directory/tree logic)
 ├── linker.ld          - Linker script for ELF binary layout
+├── scripts/
+│   └── build_fat12_image.py - Helper used by `make img` to lay out the FAT structures
 ├── Makefile           - Build system configuration
 ├── README.md          - This file
 └── LICENSE            - MIT License

@@ -31,6 +31,11 @@ static int command_executed = 0;
 static int prompt_line_start_x = 0;
 static int prompt_line_y = 0;
 
+/* FAT12 filesystem state */
+static int fat_ready = 0;
+#define FS_IO_BUFFER_SIZE 16384
+static uint8_t fs_io_buffer[FS_IO_BUFFER_SIZE];
+
 /* Forward declarations */
 void kernel_main(void);
 void vga_clear(void);
@@ -43,6 +48,13 @@ void handle_fetch(void);
 void handle_help(void);
 void handle_shutdown(void);
 void handle_disk(void);
+void handle_ls(const char *args);
+void handle_pwd(void);
+void handle_cd(const char *args);
+void handle_cat(const char *args);
+void handle_write_command(const char *args);
+void handle_mkdir_command(const char *args);
+void handle_rm_command(const char *args);
 void execute_command(const char *cmd_line);
 void handle_keyboard_input(void);
 void update_hardware_cursor(int x, int y);
@@ -53,6 +65,7 @@ extern void halt_cpu(void);
 
 /* Include disk driver */
 #include "disk.h"
+#include "fat12.h"
 
 /* Keyboard input functions */
 static inline uint8_t inb(uint16_t port) {
@@ -332,6 +345,135 @@ size_t strlen_impl(const char *str) {
     return len;
 }
 
+const char *skip_whitespace(const char *str) {
+    if (!str) {
+        return str;
+    }
+    while (*str == ' ' || *str == '\t') {
+        str++;
+    }
+    return str;
+}
+
+int read_token(const char **input, char *dest, int max_len) {
+    if (!input || !dest || max_len <= 0) {
+        return 0;
+    }
+    const char *ptr = skip_whitespace(*input);
+    if (!ptr || *ptr == '\0') {
+        return 0;
+    }
+    int len = 0;
+    while (*ptr && *ptr != ' ' && *ptr != '\t') {
+        if (len < max_len - 1) {
+            dest[len++] = *ptr;
+        }
+        ptr++;
+    }
+    dest[len] = '\0';
+    *input = ptr;
+    return len;
+}
+
+int copy_path_argument(const char *input, char *dest, size_t max_len) {
+    if (!input || !dest || max_len == 0) {
+        if (dest && max_len > 0) {
+            dest[0] = '\0';
+        }
+        return 0;
+    }
+    size_t write = 0;
+    while (*input && *input != '\n' && *input != '\r') {
+        if (write + 1 >= max_len) {
+            dest[write] = '\0';
+            return -1;
+        }
+        dest[write++] = *input++;
+    }
+    while (write > 0 && (dest[write - 1] == ' ' || dest[write - 1] == '\t')) {
+        write--;
+    }
+    dest[write] = '\0';
+    return (int)write;
+}
+
+void print_unsigned(uint32_t value) {
+    char buffer[16];
+    int pos = 0;
+    if (value == 0) {
+        console_putchar('0');
+        return;
+    }
+    while (value > 0 && pos < (int)sizeof(buffer)) {
+        buffer[pos++] = (char)('0' + (value % 10));
+        value /= 10;
+    }
+    for (int i = pos - 1; i >= 0; i--) {
+        console_putchar(buffer[i]);
+    }
+}
+
+void print_decimal(int value) {
+    uint32_t magnitude;
+    if (value < 0) {
+        console_putchar('-');
+        magnitude = (uint32_t)(- (value + 1)) + 1;
+    } else {
+        magnitude = (uint32_t)value;
+    }
+    print_unsigned(magnitude);
+}
+
+const char *fat12_error_string(int code) {
+    switch (code) {
+        case FAT12_OK: return "ok";
+        case FAT12_ERR_IO: return "io";
+        case FAT12_ERR_BAD_BPB: return "bad bpb";
+        case FAT12_ERR_NOT_FAT12: return "not fat12";
+        case FAT12_ERR_OUT_OF_RANGE: return "range";
+        case FAT12_ERR_NO_FREE_CLUSTER: return "disk full";
+        case FAT12_ERR_INVALID_NAME: return "name";
+        case FAT12_ERR_NOT_FOUND: return "not found";
+        case FAT12_ERR_NOT_DIRECTORY: return "not dir";
+        case FAT12_ERR_ALREADY_EXISTS: return "exists";
+        case FAT12_ERR_DIR_FULL: return "dir full";
+        case FAT12_ERR_BUFFER_SMALL: return "buffer";
+        case FAT12_ERR_NOT_FILE: return "not file";
+        case FAT12_ERR_NOT_INITIALIZED: return "fs offline";
+        default: return "unknown";
+    }
+}
+
+void print_fs_error(int code) {
+    console_print(" (");
+    console_print(fat12_error_string(code));
+    console_print(" code ");
+    print_decimal(code);
+    console_print(")");
+}
+
+typedef struct {
+    int count;
+} ls_context_t;
+
+static int ls_callback(const fat12_dir_entry_info_t *entry, void *context) {
+    ls_context_t *ctx = (ls_context_t *)context;
+    ctx->count++;
+    if (entry->attr & FAT12_ATTR_DIRECTORY) {
+        console_print("[DIR] ");
+    } else {
+        console_print("      ");
+    }
+    console_print(entry->name);
+    if ((entry->attr & FAT12_ATTR_DIRECTORY) == 0) {
+        console_print(" (");
+        print_unsigned(entry->size);
+        console_print(" bytes)");
+    }
+    console_print("\n");
+    return 0;
+}
+
 /* Command handlers */
 void handle_clear(void) {
     vga_clear();
@@ -368,16 +510,26 @@ void handle_fetch(void) {
 
 void handle_help(void) {
     console_print("Available commands:\n");
-    console_print("  clear     - Clear the screen\n");
-    console_print("  echo TEXT - Print text to the screen\n");
-    console_print("  fetch     - Print OS and system information\n");
-    console_print("  disk      - Test disk I/O and show disk information\n");
-    console_print("  shutdown  - Shut down the system\n");
-    console_print("  help      - Display this help message\n");
+    console_print("  clear          - Clear the screen\n");
+    console_print("  echo TEXT      - Print text to the screen\n");
+    console_print("  fetch          - Print OS and system information\n");
+    console_print("  disk           - Test disk I/O and show disk information\n");
+    console_print("  ls [PATH]      - List files in the current or given directory\n");
+    console_print("  pwd            - Show current directory\n");
+    console_print("  cd PATH        - Change directory\n");
+    console_print("  cat FILE       - Print file contents\n");
+    console_print("  write FILE TXT - Create/overwrite a text file\n");
+    console_print("  mkdir NAME     - Create a directory\n");
+    console_print("  rm FILE        - Delete a file\n");
+    console_print("  shutdown       - Shut down the system\n");
+    console_print("  help           - Display this help message\n");
 }
 
 void handle_shutdown(void) {
     console_print("Attempting system shutdown...\n");
+    if (fat_ready) {
+        fat12_flush();
+    }
     console_print("Halting CPU...\n");
     halt_cpu();
 }
@@ -504,6 +656,188 @@ void handle_disk(void) {
     }
 }
 
+void handle_ls(const char *args) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    const char *path = skip_whitespace(args);
+    char path_buf[FAT12_PATH_MAX];
+    int path_len = 0;
+    if (path && *path) {
+        path_len = copy_path_argument(path, path_buf, sizeof(path_buf));
+        if (path_len < 0) {
+            console_print("ls failed (path too long)\n");
+            return;
+        }
+    }
+    ls_context_t ctx;
+    ctx.count = 0;
+    int result;
+    if (path_len > 0) {
+        result = fat12_iterate_path(path_buf, ls_callback, &ctx);
+    } else {
+        result = fat12_iterate_current_directory(ls_callback, &ctx);
+    }
+    if (result != FAT12_OK) {
+        console_print("ls failed");
+        print_fs_error(result);
+        console_print("\n");
+        return;
+    }
+    if (ctx.count == 0) {
+        console_print("(empty)\n");
+    }
+}
+
+void handle_pwd(void) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    console_print(fat12_get_cwd());
+    console_print("\n");
+}
+
+void handle_cd(const char *args) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    const char *path = skip_whitespace(args);
+    char path_buf[FAT12_PATH_MAX];
+    int path_len = 0;
+    if (path && *path) {
+        path_len = copy_path_argument(path, path_buf, sizeof(path_buf));
+        if (path_len < 0) {
+            console_print("cd failed (path too long)\n");
+            return;
+        }
+    }
+    if (path_len == 0) {
+        path_buf[0] = '/';
+        path_buf[1] = '\0';
+    }
+    int result = fat12_change_directory(path_buf);
+    if (result != FAT12_OK) {
+        console_print("cd failed");
+        print_fs_error(result);
+        console_print("\n");
+        return;
+    }
+    console_print(fat12_get_cwd());
+    console_print("\n");
+}
+
+void handle_cat(const char *args) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    const char *path = skip_whitespace(args);
+    char path_buf[FAT12_PATH_MAX];
+    int path_len = copy_path_argument(path, path_buf, sizeof(path_buf));
+    if (path_len < 0) {
+        console_print("cat failed (path too long)\n");
+        return;
+    }
+    if (path_len == 0) {
+        console_print("Usage: cat FILE\n");
+        return;
+    }
+    uint32_t size = 0;
+    int result = fat12_read_file(path_buf, fs_io_buffer, FS_IO_BUFFER_SIZE - 1, &size);
+    if (result != FAT12_OK) {
+        console_print("cat failed");
+        print_fs_error(result);
+        console_print("\n");
+        return;
+    }
+    for (uint32_t i = 0; i < size; i++) {
+        console_putchar((char)fs_io_buffer[i]);
+    }
+    if (size == 0 || fs_io_buffer[size - 1] != '\n') {
+        console_print("\n");
+    }
+}
+
+void handle_write_command(const char *args) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    const char *cursor = args;
+    char name_buf[FAT12_PATH_MAX];
+    if (read_token(&cursor, name_buf, sizeof(name_buf)) == 0) {
+        console_print("Usage: write NAME TEXT\n");
+        return;
+    }
+    const char *payload = skip_whitespace(cursor);
+    uint32_t length = 0;
+    if (payload) {
+        while (payload[length] != '\0') {
+            if (length >= FS_IO_BUFFER_SIZE) {
+                console_print("write failed (data too large)\n");
+                return;
+            }
+            fs_io_buffer[length] = (uint8_t)payload[length];
+            length++;
+        }
+    }
+    int result = fat12_write_file(name_buf, fs_io_buffer, length);
+    if (result != FAT12_OK) {
+        console_print("write failed");
+        print_fs_error(result);
+        console_print("\n");
+        return;
+    }
+    console_print("Wrote ");
+    print_unsigned(length);
+    console_print(" bytes\n");
+}
+
+void handle_mkdir_command(const char *args) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    const char *cursor = args;
+    char name_buf[FAT12_PATH_MAX];
+    if (read_token(&cursor, name_buf, sizeof(name_buf)) == 0) {
+        console_print("Usage: mkdir NAME\n");
+        return;
+    }
+    int result = fat12_create_directory(name_buf);
+    if (result != FAT12_OK) {
+        console_print("mkdir failed");
+        print_fs_error(result);
+        console_print("\n");
+        return;
+    }
+    console_print("Directory created\n");
+}
+
+void handle_rm_command(const char *args) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    const char *cursor = args;
+    char name_buf[FAT12_PATH_MAX];
+    if (read_token(&cursor, name_buf, sizeof(name_buf)) == 0) {
+        console_print("Usage: rm NAME\n");
+        return;
+    }
+    int result = fat12_delete_file(name_buf);
+    if (result != FAT12_OK) {
+        console_print("rm failed");
+        print_fs_error(result);
+        console_print("\n");
+        return;
+    }
+    console_print("File deleted\n");
+}
+
 /* Parse and execute commands */
 void execute_command(const char *cmd_line) {
     if (!cmd_line || *cmd_line == '\0') {
@@ -528,6 +862,33 @@ void execute_command(const char *cmd_line) {
     } else if (strncmp_impl(cmd_line, "disk", 4) == 0 && 
                (cmd_line[4] == '\0' || cmd_line[4] == ' ' || cmd_line[4] == '\n')) {
         handle_disk();
+    } else if (strncmp_impl(cmd_line, "ls", 2) == 0 &&
+               (cmd_line[2] == '\0' || cmd_line[2] == ' ' || cmd_line[2] == '\n')) {
+        const char *args = cmd_line + 2;
+        handle_ls(args);
+    } else if (strncmp_impl(cmd_line, "pwd", 3) == 0 &&
+               (cmd_line[3] == '\0' || cmd_line[3] == ' ' || cmd_line[3] == '\n')) {
+        handle_pwd();
+    } else if (strncmp_impl(cmd_line, "cd", 2) == 0 &&
+               (cmd_line[2] == '\0' || cmd_line[2] == ' ' || cmd_line[2] == '\n')) {
+        const char *args = cmd_line + 2;
+        handle_cd(args);
+    } else if (strncmp_impl(cmd_line, "cat", 3) == 0 &&
+               (cmd_line[3] == '\0' || cmd_line[3] == ' ' || cmd_line[3] == '\n')) {
+        const char *args = cmd_line + 3;
+        handle_cat(args);
+    } else if (strncmp_impl(cmd_line, "write", 5) == 0 &&
+               (cmd_line[5] == '\0' || cmd_line[5] == ' ' || cmd_line[5] == '\n')) {
+        const char *args = cmd_line + 5;
+        handle_write_command(args);
+    } else if (strncmp_impl(cmd_line, "mkdir", 5) == 0 &&
+               (cmd_line[5] == '\0' || cmd_line[5] == ' ' || cmd_line[5] == '\n')) {
+        const char *args = cmd_line + 5;
+        handle_mkdir_command(args);
+    } else if (strncmp_impl(cmd_line, "rm", 2) == 0 &&
+               (cmd_line[2] == '\0' || cmd_line[2] == ' ' || cmd_line[2] == '\n')) {
+        const char *args = cmd_line + 2;
+        handle_rm_command(args);
     } else if (strncmp_impl(cmd_line, "shutdown", 8) == 0 && 
                (cmd_line[8] == '\0' || cmd_line[8] == ' ' || cmd_line[8] == '\n')) {
         handle_shutdown();
@@ -610,6 +971,22 @@ void kernel_main(void) {
             console_print(")\n");
         } else {
             console_print("OK\n");
+        }
+    }
+    
+    if (disk_result == 0) {
+        console_print("Initializing FAT12 filesystem... ");
+        int fat_result = fat12_init(0);
+        if (fat_result != FAT12_OK) {
+            console_print("FAILED");
+            print_fs_error(fat_result);
+            console_print("\n");
+        } else {
+            console_print("OK\n");
+            fat_ready = 1;
+            console_print("Mounted volume at ");
+            console_print(fat12_get_cwd());
+            console_print("\n");
         }
     }
     
