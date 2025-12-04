@@ -197,7 +197,7 @@ interact
 
 ### Interactive Mode
 
-When the OS boots, you'll see a prompt:
+When the OS boots, you'll see a welcome message and a prompt:
 
 ```
 Welcome to AltoniumOS 1.0.0
@@ -206,48 +206,65 @@ Type 'help' for available commands
 >
 ```
 
+As you type characters, they appear before the prompt marker `>`. For example, typing "hello" shows:
+
+```
+hello>
+```
+
+The blinking cursor appears at the position between your input and the `>` marker, providing visual feedback of where the next character will appear.
+
 ### Commands
 
 #### help
 Display all available commands:
 ```
-> help
+help>
 Available commands:
   clear     - Clear the screen
   echo TEXT - Print text to the screen
   fetch     - Print OS and system information
   shutdown  - Shut down the system
   help      - Display this help message
+
+>
 ```
 
 #### echo
 Print text to the console:
 ```
-> echo Hello, World!
+echo Hello, World!>
 Hello, World!
+
+>
 ```
 
 #### fetch
 Display system information:
 ```
-> fetch
+fetch>
 OS: AltoniumOS
 Version: 1.0.0
 Architecture: x86
-Build Date: Dec  2 2025
-Build Time: 15:58:24
+Build Date: Dec  4 2025
+Build Time: 05:32:00
+
+>
 ```
 
 #### clear
-Clear the screen:
+Clear the screen and reset prompt:
 ```
-> clear
+clear>
+(screen clears)
+
+>
 ```
 
 #### shutdown
 Shut down the system (initiates ACPI power-off):
 ```
-> shutdown
+shutdown>
 Attempting system shutdown...
 Halting CPU...
 ```
@@ -293,6 +310,31 @@ The OS communicates with the display via the VGA text buffer at memory address `
 - 80 columns × 25 rows (80×25 text mode)
 - Automatic scrolling when reaching the bottom
 - Color attributes (default: white on black)
+
+### Prompt and Cursor Management
+
+The shell uses an intelligent prompt rendering system that maintains proper cursor alignment:
+
+**Prompt Rendering (`render_prompt_line()`):**
+- The prompt line displays input as: `[typed_characters]>`
+- The `>` character acts as a right-hand caret marker, appearing after all typed input
+- When typing "hello", the display shows: `hello>` with the cursor between the input and the marker
+
+**Hardware Cursor Updates:**
+- VGA hardware cursor position is updated via I/O ports 0x3D4/0x3D5
+- The cursor position register (0x0E, 0x0F) is updated after every character, backspace, and newline
+- This ensures the blinking cursor aligns with the actual position in the text buffer
+
+**Keyboard Input Processing:**
+- Printable characters are added to the input buffer and the line is redrawn
+- Backspace removes the last character and redraws the line
+- Enter executes the command and advances to a new line
+- The entire line is redrawn to maintain proper cursor/prompt alignment
+
+**Buffer Overflow Prevention:**
+- Cursor position bounds are checked against VGA_WIDTH to prevent underflow/overflow
+- Input buffer size is bounded to prevent buffer overruns
+- Line clearing respects the prompt line starting position
 
 ### Shutdown Mechanism
 
