@@ -11,9 +11,11 @@ This OS includes the following console commands:
 - **fetch** – Display OS and system information (name, version, architecture, build date/time)
 - **disk** – Test raw disk I/O and show sector diagnostics
 - **ls [PATH]** – List files and directories from the current working directory or a supplied path
+- **dir [PATH]** – Alias for ls, list directory contents
 - **pwd** – Display the current working directory
 - **cd PATH** – Change the current working directory (supports absolute/relative paths and `..`)
 - **cat FILE** – Dump the contents of a file stored on the FAT12 volume
+- **touch FILE** – Create a zero-length file
 - **write FILE TEXT** – Create or overwrite an 8.3 text file with the provided content
 - **mkdir NAME** – Create a directory inside the current working directory
 - **rm FILE** – Delete a file from the current working directory
@@ -338,10 +340,10 @@ clear>
 >
 ```
 
-#### ls / pwd / cd
-Navigate the FAT12 filesystem:
+#### dir / ls / pwd / cd
+Navigate the FAT12 filesystem (both `ls` and `dir` share the same output which includes entry type and size information):
 ```
-ls>
+dir>
 [DIR] DOCS
       README.TXT (92 bytes)
       SYSTEM.CFG (42 bytes)
@@ -349,6 +351,8 @@ ls>
 cd docs>
 pwd>
 /DOCS
+ls>
+      INFO.TXT (32 bytes)
 ```
 
 #### cat
@@ -357,6 +361,15 @@ Print file contents:
 cat README.TXT>
 Welcome to AltoniumOS FAT12 volume!
 Use 'ls', 'cat', and 'write' inside the kernel shell.
+```
+
+#### touch
+Create an empty file (useful for quickly seeding directories before writing data):
+```
+touch DOCS/EMPTY.TXT>
+dir docs
+[DIR] INFO.TXT (32 bytes)
+      EMPTY.TXT (0 bytes)
 ```
 
 #### write

@@ -8,7 +8,6 @@
 #define FAT12_MAX_ROOT_DIR_SECTORS     64
 #define FAT12_MAX_SECTORS_PER_CLUSTER  32
 #define FAT12_MAX_PATH_DEPTH           16
-#define FAT12_PATH_MAX                128
 
 typedef struct __attribute__((packed)) {
     uint8_t name[11];
