@@ -26,6 +26,7 @@
 #define FAT12_ERR_NOT_INITIALIZED   -13
 
 #define FAT12_MAX_DISPLAY_NAME 13
+#define FAT12_PATH_MAX        128
 
 typedef struct {
     char name[FAT12_MAX_DISPLAY_NAME];

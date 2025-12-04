@@ -52,6 +52,7 @@ void handle_ls(const char *args);
 void handle_pwd(void);
 void handle_cd(const char *args);
 void handle_cat(const char *args);
+void handle_touch(const char *args);
 void handle_write_command(const char *args);
 void handle_mkdir_command(const char *args);
 void handle_rm_command(const char *args);
@@ -515,9 +516,11 @@ void handle_help(void) {
     console_print("  fetch          - Print OS and system information\n");
     console_print("  disk           - Test disk I/O and show disk information\n");
     console_print("  ls [PATH]      - List files in the current or given directory\n");
+    console_print("  dir [PATH]     - Alias for ls\n");
     console_print("  pwd            - Show current directory\n");
     console_print("  cd PATH        - Change directory\n");
     console_print("  cat FILE       - Print file contents\n");
+    console_print("  touch FILE     - Create a zero-length file\n");
     console_print("  write FILE TXT - Create/overwrite a text file\n");
     console_print("  mkdir NAME     - Create a directory\n");
     console_print("  rm FILE        - Delete a file\n");
@@ -761,6 +764,29 @@ void handle_cat(const char *args) {
     }
 }
 
+void handle_touch(const char *args) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    const char *cursor = args;
+    char name_buf[FAT12_PATH_MAX];
+    if (read_token(&cursor, name_buf, sizeof(name_buf)) == 0) {
+        console_print("Usage: touch NAME\n");
+        return;
+    }
+    int result = fat12_write_file(name_buf, 0, 0);
+    if (result != FAT12_OK) {
+        console_print("touch failed");
+        print_fs_error(result);
+        console_print("\n");
+        return;
+    }
+    console_print("Created empty file: ");
+    console_print(name_buf);
+    console_print("\n");
+}
+
 void handle_write_command(const char *args) {
     if (!fat_ready) {
         console_print("Filesystem not initialized\n");
@@ -866,6 +892,10 @@ void execute_command(const char *cmd_line) {
                (cmd_line[2] == '\0' || cmd_line[2] == ' ' || cmd_line[2] == '\n')) {
         const char *args = cmd_line + 2;
         handle_ls(args);
+    } else if (strncmp_impl(cmd_line, "dir", 3) == 0 &&
+               (cmd_line[3] == '\0' || cmd_line[3] == ' ' || cmd_line[3] == '\n')) {
+        const char *args = cmd_line + 3;
+        handle_ls(args);
     } else if (strncmp_impl(cmd_line, "pwd", 3) == 0 &&
                (cmd_line[3] == '\0' || cmd_line[3] == ' ' || cmd_line[3] == '\n')) {
         handle_pwd();
@@ -877,6 +907,10 @@ void execute_command(const char *cmd_line) {
                (cmd_line[3] == '\0' || cmd_line[3] == ' ' || cmd_line[3] == '\n')) {
         const char *args = cmd_line + 3;
         handle_cat(args);
+    } else if (strncmp_impl(cmd_line, "touch", 5) == 0 &&
+               (cmd_line[5] == '\0' || cmd_line[5] == ' ' || cmd_line[5] == '\n')) {
+        const char *args = cmd_line + 5;
+        handle_touch(args);
     } else if (strncmp_impl(cmd_line, "write", 5) == 0 &&
                (cmd_line[5] == '\0' || cmd_line[5] == ' ' || cmd_line[5] == '\n')) {
         const char *args = cmd_line + 5;

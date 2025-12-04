@@ -51,9 +51,11 @@ Type 'help' for available commands
 - `fetch` - Display system information
 - `disk` - Test disk I/O and show disk information
 - `ls [PATH]` - List files in the current directory or a specified path
+- `dir [PATH]` - Alias for ls
 - `pwd` - Show the current working directory
 - `cd PATH` - Change directories (supports `/`, `.`, and `..`)
 - `cat FILE` - Dump a file stored on the FAT12 volume
+- `touch FILE` - Create a zero-length file
 - `write FILE TEXT` - Create/overwrite an 8.3 text file using the rest of the line
 - `mkdir NAME` - Create a directory
 - `rm FILE` - Delete a regular file
@@ -72,7 +74,7 @@ To test the disk functionality:
 After the `disk` command succeeds, try the FAT12 shell commands:
 
 ```text
-ls
+dir
 [DIR] DOCS
       README.TXT (92 bytes)
       SYSTEM.CFG (42 bytes)
@@ -80,12 +82,14 @@ ls
 
 ```
 cd docs
-pwd            # Shows /DOCS
-cat INFO.TXT   # Prints the seeded note
+pwd              # Shows /DOCS
+cat INFO.TXT     # Prints the seeded note
+touch EMPTY.TXT  # Creates a zero-length file
+ls               # Shows all files including EMPTY.TXT
 write TODO.TXT Remember the demo
 ```
 
-Filenames must follow the 8.3 DOS convention and shell writes are limited to ~16 KB per file creation.
+Filenames must follow the 8.3 DOS convention and shell writes are limited to ~16 KB per file creation. Both `ls` and `dir` can be used interchangeably.
 
 ## Project Status
 
