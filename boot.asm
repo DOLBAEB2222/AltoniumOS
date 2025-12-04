@@ -4,7 +4,29 @@
 [BITS 16]
 [ORG 0x7C00]
 
-start:
+    jmp short boot_start
+    nop
+    db 'ALTONOS '
+    dw 512                ; Bytes per sector
+    db 8                  ; Sectors per cluster
+    dw 128                ; Reserved sectors
+    db 2                  ; Number of FATs
+    dw 256                ; Root directory entries
+    dw 20480              ; Total sectors (16-bit)
+    db 0xF8               ; Media descriptor
+    dw 8                  ; Sectors per FAT
+    dw 63                 ; Sectors per track
+    dw 16                 ; Number of heads
+    dd 0                  ; Hidden sectors
+    dd 0                  ; Total sectors (32-bit)
+    db 0x80               ; Drive number
+    db 0                  ; Reserved
+    db 0x29               ; Boot signature
+    dd 0x20240101         ; Volume ID
+    db 'ALTONIUMOS '      ; Volume label (11 bytes)
+    db 'FAT12   '         ; File system type
+
+boot_start:
     ; Setup segments
     cli
     xor ax, ax
