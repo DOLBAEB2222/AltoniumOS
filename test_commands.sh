@@ -107,6 +107,13 @@ else
     exit 1
 fi
 
+if grep -q "handle_nano" kernel.c; then
+    echo "   ✓ nano command implemented"
+else
+    echo "   ✗ nano command missing"
+    exit 1
+fi
+
 if grep -q '"dir"' kernel.c; then
     echo "   ✓ dir alias (for ls) implemented"
 else
@@ -187,6 +194,7 @@ echo "    - touch: Creates zero-length files"
 echo "    - write: Creates/overwrites text files"
 echo "    - mkdir: Creates directories"
 echo "    - rm: Deletes files"
+echo "    - nano: Simple text editor with full-screen editing"
 echo "    - shutdown: Halts the system"
 echo "    - help: Lists available commands"
 echo "  ✓ Multiboot compliant kernel"
