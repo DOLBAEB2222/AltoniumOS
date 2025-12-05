@@ -19,6 +19,7 @@ This OS includes the following console commands:
 - **write FILE TEXT** – Create or overwrite an 8.3 text file with the provided content
 - **mkdir NAME** – Create a directory inside the current working directory
 - **rm FILE** – Delete a file from the current working directory
+- **nano FILE** – Simple text editor with full-screen editing (type 's' at start of empty file to save, 'x' at start of empty file to exit)
 - **shutdown** – Gracefully shut down the system (attempts ACPI power-off via port 0x604)
 - **help** – Display all available commands and usage hints
 
@@ -132,6 +133,49 @@ Sample notes live inside DOCS/INFO.TXT
 ```
 
 The `write` command stores the remainder of the line as file contents (up to ~16 KB per write), `mkdir` creates new directories, and `rm` deletes regular files. All filenames must follow the DOS 8.3 convention (uppercase letters, numbers, `_` or `-`).
+
+### Nano Text Editor
+
+AltoniumOS includes a simple nano-like text editor with the following features:
+
+- **Full-screen editing** with viewport scrolling
+- **Line-based text buffer** supporting up to 1000 lines of 200 characters each  
+- **Cursor navigation** using arrow keys
+- **Text editing** with character insertion, backspace, and Enter for new lines
+- **File operations** via FAT12 filesystem integration
+- **Status bar** showing filename and modification state
+
+#### Usage
+
+```bash
+nano filename.txt
+```
+
+#### Controls
+
+- **Arrow Keys** - Move cursor up/down/left/right
+- **Text Characters** - Insert at cursor position
+- **Enter** - Create new line (splits current line)
+- **Backspace** - Delete character before cursor or join lines
+- **'s' at start of empty file** - Save file
+- **'x' at start of empty file** - Exit editor
+
+#### Example Workflow
+
+```bash
+# Create or edit a file
+nano README.TXT
+
+# Type your content using the keyboard
+# Navigate with arrow keys
+# Press 's' at beginning of empty file to save
+# Press 'x' at beginning of empty file to exit
+
+# Verify the file was saved
+cat README.TXT
+```
+
+The editor automatically creates new files if they don't exist and saves changes to the FAT12 filesystem when you exit.
 
 ### Multiboot Support
 

@@ -59,6 +59,7 @@ Type 'help' for available commands
 - `write FILE TEXT` - Create/overwrite an 8.3 text file using the rest of the line
 - `mkdir NAME` - Create a directory
 - `rm FILE` - Delete a regular file
+- `nano FILE` - Simple text editor with full-screen editing
 - `shutdown` - Shut down the system
 
 ### Testing Disk I/O
@@ -90,6 +91,51 @@ write TODO.TXT Remember the demo
 ```
 
 Filenames must follow the 8.3 DOS convention and shell writes are limited to ~16 KB per file creation. Both `ls` and `dir` can be used interchangeably.
+
+### Testing Nano Editor
+
+The nano text editor provides full-screen editing capabilities:
+
+```bash
+# Create or edit a file
+nano MYFILE.TXT
+
+# Type text content using keyboard
+# Navigate with arrow keys (up/down/left/right)
+# Press Enter to create new lines
+# Press Backspace to delete characters or join lines
+
+# Save file - type 's' at very beginning (first character position) of empty file
+# Exit editor - type 'x' at very beginning (first character position) of empty file
+
+# Verify file was saved
+cat MYFILE.TXT
+```
+
+#### Nano Features
+
+- **Full-screen viewport** with 23 lines of text display
+- **Status bar** showing filename and [Modified] state
+- **Line-based buffer** supporting up to 1000 lines
+- **Character insertion** at cursor position
+- **Arrow key navigation** with automatic scrolling
+- **FAT12 integration** for loading/saving files
+- **Automatic file creation** if file doesn't exist
+
+#### Example Editing Session
+
+```bash
+nano TEST.TXT
+# (editor opens with empty file)
+Hello AltoniumOS!
+This is the nano editor.
+Press Enter to create new lines.
+# Type 's' at start to save
+# Type 'x' at start to exit
+
+cat TEST.TXT
+# Should show the content you saved
+```
 
 ## Project Status
 

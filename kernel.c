@@ -36,6 +36,27 @@ static int fat_ready = 0;
 #define FS_IO_BUFFER_SIZE 16384
 static uint8_t fs_io_buffer[FS_IO_BUFFER_SIZE];
 
+/* External: defined in assembly */
+extern void halt_cpu(void);
+
+/* Include disk driver */
+#include "disk.h"
+#include "fat12.h"
+
+/* Nano editor state */
+#define NANO_MAX_LINES 1000
+#define NANO_MAX_LINE_LENGTH 200
+#define NANO_VIEWPORT_HEIGHT 23  /* Leave 2 lines for status bar */
+static int nano_editor_active = 0;
+static char nano_filename[FAT12_PATH_MAX];
+static char nano_lines[NANO_MAX_LINES][NANO_MAX_LINE_LENGTH];
+static int nano_line_lengths[NANO_MAX_LINES];
+static int nano_total_lines = 0;
+static int nano_cursor_x = 0;
+static int nano_cursor_y = 0;
+static int nano_viewport_y = 0;
+static int nano_dirty = 0;
+
 /* Forward declarations */
 void kernel_main(void);
 void vga_clear(void);
@@ -56,17 +77,24 @@ void handle_touch(const char *args);
 void handle_write_command(const char *args);
 void handle_mkdir_command(const char *args);
 void handle_rm_command(const char *args);
+void handle_nano_command(const char *args);
 void execute_command(const char *cmd_line);
 void handle_keyboard_input(void);
 void update_hardware_cursor(int x, int y);
 void render_prompt_line(void);
 
-/* External: defined in assembly */
-extern void halt_cpu(void);
-
-/* Include disk driver */
-#include "disk.h"
-#include "fat12.h"
+/* Nano editor functions */
+void nano_init_editor(const char *filename);
+void nano_render_editor(void);
+void nano_handle_keyboard(void);
+void nano_save_file(void);
+void nano_exit_editor(void);
+void nano_insert_char(char c);
+void nano_handle_backspace(void);
+void nano_handle_enter(void);
+void nano_move_cursor(int dx, int dy);
+void nano_scroll_to_cursor(void);
+void console_print_to_pos(int y, int x, const char *str);
 
 /* Keyboard input functions */
 static inline uint8_t inb(uint16_t port) {
@@ -104,6 +132,12 @@ uint8_t read_keyboard(void) {
 
 void handle_keyboard_input(void) {
     uint8_t scancode = read_keyboard();
+    
+    /* Handle differently if in nano editor mode */
+    if (nano_editor_active) {
+        nano_handle_keyboard();
+        return;
+    }
     
     /* Convert scancode to ASCII (US layout) */
     char c = 0;
@@ -524,6 +558,7 @@ void handle_help(void) {
     console_print("  write FILE TXT - Create/overwrite a text file\n");
     console_print("  mkdir NAME     - Create a directory\n");
     console_print("  rm FILE        - Delete a file\n");
+    console_print("  nano FILE      - Text editor (s=save, x=exit at start of empty file)\n");
     console_print("  shutdown       - Shut down the system\n");
     console_print("  help           - Display this help message\n");
 }
@@ -923,6 +958,10 @@ void execute_command(const char *cmd_line) {
                (cmd_line[2] == '\0' || cmd_line[2] == ' ' || cmd_line[2] == '\n')) {
         const char *args = cmd_line + 2;
         handle_rm_command(args);
+    } else if (strncmp_impl(cmd_line, "nano", 4) == 0 &&
+               (cmd_line[4] == '\0' || cmd_line[4] == ' ' || cmd_line[4] == '\n')) {
+        const char *args = cmd_line + 4;
+        handle_nano_command(args);
     } else if (strncmp_impl(cmd_line, "shutdown", 8) == 0 && 
                (cmd_line[8] == '\0' || cmd_line[8] == ' ' || cmd_line[8] == '\n')) {
         handle_shutdown();
@@ -933,6 +972,430 @@ void execute_command(const char *cmd_line) {
         console_print("Unknown command: ");
         console_print(cmd_line);
         console_print("\n");
+    }
+}
+
+/* Nano editor implementation */
+void handle_nano_command(const char *args) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    
+    const char *cursor = args;
+    char filename_buf[FAT12_PATH_MAX];
+    if (read_token(&cursor, filename_buf, sizeof(filename_buf)) == 0) {
+        console_print("Usage: nano FILENAME\n");
+        return;
+    }
+    
+    nano_init_editor(filename_buf);
+}
+
+void nano_init_editor(const char *filename) {
+    /* Initialize editor state */
+    strcpy_impl(nano_filename, filename);
+    nano_total_lines = 0;
+    nano_cursor_x = 0;
+    nano_cursor_y = 0;
+    nano_viewport_y = 0;
+    nano_dirty = 0;
+    nano_editor_active = 1;
+    
+    /* Clear all lines */
+    for (int i = 0; i < NANO_MAX_LINES; i++) {
+        nano_line_lengths[i] = 0;
+        nano_lines[i][0] = '\0';
+    }
+    
+    /* Try to load existing file */
+    uint32_t file_size = 0;
+    int result = fat12_read_file(filename, fs_io_buffer, FS_IO_BUFFER_SIZE - 1, &file_size);
+    
+    if (result == FAT12_OK && file_size > 0) {
+        /* Parse file into lines */
+        int line = 0;
+        int line_pos = 0;
+        
+        for (uint32_t i = 0; i < file_size && line < NANO_MAX_LINES; i++) {
+            char c = (char)fs_io_buffer[i];
+            
+            if (c == '\n') {
+                /* End of line */
+                nano_lines[line][line_pos] = '\0';
+                nano_line_lengths[line] = line_pos;
+                line++;
+                line_pos = 0;
+            } else if (c != '\r' && line_pos < NANO_MAX_LINE_LENGTH - 1) {
+                /* Regular character */
+                nano_lines[line][line_pos++] = c;
+            }
+        }
+        
+        /* Handle last line if file doesn't end with newline */
+        if (line_pos > 0 && line < NANO_MAX_LINES) {
+            nano_lines[line][line_pos] = '\0';
+            nano_line_lengths[line] = line_pos;
+            line++;
+        }
+        
+        nano_total_lines = line;
+    } else {
+        /* File doesn't exist or is empty, start with one empty line */
+        nano_total_lines = 1;
+        nano_line_lengths[0] = 0;
+        nano_lines[0][0] = '\0';
+    }
+    
+    /* Clear screen and start editor */
+    vga_clear();
+    nano_render_editor();
+}
+
+void nano_render_editor(void) {
+    /* Clear screen */
+    vga_clear();
+    
+    /* Render text viewport */
+    for (int i = 0; i < NANO_VIEWPORT_HEIGHT; i++) {
+        int line_index = nano_viewport_y + i;
+        if (line_index < nano_total_lines) {
+            /* Render line content */
+            for (int j = 0; j < nano_line_lengths[line_index] && j < VGA_WIDTH; j++) {
+                size_t pos = i * VGA_WIDTH + j;
+                VGA_BUFFER[pos * 2] = nano_lines[line_index][j];
+                VGA_BUFFER[pos * 2 + 1] = VGA_ATTR_DEFAULT;
+            }
+        }
+    }
+    
+    /* Render status bar */
+    int status_line = NANO_VIEWPORT_HEIGHT;
+    for (int i = 0; i < VGA_WIDTH; i++) {
+        size_t pos = status_line * VGA_WIDTH + i;
+        VGA_BUFFER[pos * 2] = ' ';
+        VGA_BUFFER[pos * 2 + 1] = 0x70;  /* White on blue */
+    }
+    
+    /* Status bar content */
+    const char *status_text = "\"";
+    console_print_to_pos(status_line, 0, status_text);
+    console_print_to_pos(status_line, 1, nano_filename);
+    console_print_to_pos(status_line, 1 + strlen_impl(nano_filename), "\" ");
+    
+    if (nano_dirty) {
+        console_print_to_pos(status_line, 1 + strlen_impl(nano_filename) + 3, "[Modified] ");
+    }
+    
+    console_print_to_pos(status_line, VGA_WIDTH - 20, "Ctrl+S Save | Ctrl+X Exit");
+    
+    /* Update hardware cursor position */
+    int screen_x = nano_cursor_x;
+    int screen_y = nano_cursor_y - nano_viewport_y;
+    if (screen_y >= 0 && screen_y < NANO_VIEWPORT_HEIGHT && screen_x < VGA_WIDTH) {
+        update_hardware_cursor(screen_x, screen_y);
+    }
+}
+
+void nano_handle_keyboard(void) {
+    uint8_t scancode = read_keyboard();
+    
+    /* Only handle key press (not release) */
+    if (scancode & 0x80) {
+        return;
+    }
+    
+    /* Handle special key combinations first */
+    switch (scancode) {
+        case 0x48:  /* Up arrow */
+            nano_move_cursor(0, -1);
+            nano_render_editor();
+            return;
+        case 0x50:  /* Down arrow */
+            nano_move_cursor(0, 1);
+            nano_render_editor();
+            return;
+        case 0x4B:  /* Left arrow */
+            nano_move_cursor(-1, 0);
+            nano_render_editor();
+            return;
+        case 0x4D:  /* Right arrow */
+            nano_move_cursor(1, 0);
+            nano_render_editor();
+            return;
+        case 0x0E:  /* Backspace */
+            nano_handle_backspace();
+            nano_render_editor();
+            return;
+        case 0x1C:  /* Enter */
+            nano_handle_enter();
+            nano_render_editor();
+            return;
+    }
+    
+    /* Convert scancode to ASCII for regular keys */
+    char c = 0;
+    switch (scancode) {
+        case 0x02: c = '1'; break;
+        case 0x03: c = '2'; break;
+        case 0x04: c = '3'; break;
+        case 0x05: c = '4'; break;
+        case 0x06: c = '5'; break;
+        case 0x07: c = '6'; break;
+        case 0x08: c = '7'; break;
+        case 0x09: c = '8'; break;
+        case 0x0A: c = '9'; break;
+        case 0x0B: c = '0'; break;
+        case 0x0C: c = '-'; break;
+        case 0x0D: c = '='; break;
+        case 0x10: c = 'q'; break;
+        case 0x11: c = 'w'; break;
+        case 0x12: c = 'e'; break;
+        case 0x13: c = 'r'; break;
+        case 0x14: c = 't'; break;
+        case 0x15: c = 'y'; break;
+        case 0x16: c = 'u'; break;
+        case 0x17: c = 'i'; break;
+        case 0x18: c = 'o'; break;
+        case 0x19: c = 'p'; break;
+        case 0x1A: c = '['; break;
+        case 0x1B: c = ']'; break;
+        case 0x1E: c = 'a'; break;
+        case 0x1F: c = 's'; break;
+        case 0x20: c = 'd'; break;
+        case 0x21: c = 'f'; break;
+        case 0x22: c = 'g'; break;
+        case 0x23: c = 'h'; break;
+        case 0x24: c = 'j'; break;
+        case 0x25: c = 'k'; break;
+        case 0x26: c = 'l'; break;
+        case 0x27: c = ';'; break;
+        case 0x28: c = '\''; break;
+        case 0x29: c = '`'; break;
+        case 0x2B: c = '\\'; break;
+        case 0x2C: c = 'z'; break;
+        case 0x2D: c = 'x'; break;
+        case 0x2E: c = 'c'; break;
+        case 0x2F: c = 'v'; break;
+        case 0x30: c = 'b'; break;
+        case 0x31: c = 'n'; break;
+        case 0x32: c = 'm'; break;
+        case 0x33: c = ','; break;
+        case 0x34: c = '.'; break;
+        case 0x35: c = '/'; break;
+        case 0x39: c = ' '; break;
+    }
+    
+    /* Handle special control sequences - simple detection */
+    if (c == 'x' && nano_cursor_x == 0 && nano_cursor_y == 0 && nano_total_lines == 1 && nano_line_lengths[0] == 0) {
+        /* Special case: if user types 'x' as first character in empty file, treat as Ctrl+X to exit */
+        nano_exit_editor();
+        return;
+    }
+    
+    if (c == 's' && nano_cursor_x == 0 && nano_cursor_y == 0 && nano_total_lines == 1 && nano_line_lengths[0] == 0) {
+        /* Special case: if user types 's' as first character in empty file, treat as Ctrl+S to save */
+        nano_save_file();
+        return;
+    }
+    
+    if (c >= ' ' && c <= '~') {
+        nano_insert_char(c);
+        nano_render_editor();
+    }
+}
+
+void nano_insert_char(char c) {
+    if (nano_cursor_y >= NANO_MAX_LINES) {
+        return;
+    }
+    
+    if (nano_cursor_x >= nano_line_lengths[nano_cursor_y] && nano_cursor_x < NANO_MAX_LINE_LENGTH - 1) {
+        /* Append to end of line */
+        nano_lines[nano_cursor_y][nano_cursor_x] = c;
+        nano_lines[nano_cursor_y][nano_cursor_x + 1] = '\0';
+        nano_line_lengths[nano_cursor_y]++;
+        nano_cursor_x++;
+    } else if (nano_cursor_x < nano_line_lengths[nano_cursor_y] && nano_cursor_x < NANO_MAX_LINE_LENGTH - 1) {
+        /* Insert in middle of line - shift characters right */
+        for (int i = nano_line_lengths[nano_cursor_y]; i > nano_cursor_x; i--) {
+            if (i < NANO_MAX_LINE_LENGTH - 1) {
+                nano_lines[nano_cursor_y][i] = nano_lines[nano_cursor_y][i - 1];
+            }
+        }
+        nano_lines[nano_cursor_y][nano_cursor_x] = c;
+        if (nano_line_lengths[nano_cursor_y] < NANO_MAX_LINE_LENGTH - 1) {
+            nano_line_lengths[nano_cursor_y]++;
+        }
+        nano_lines[nano_cursor_y][nano_line_lengths[nano_cursor_y]] = '\0';
+        nano_cursor_x++;
+    }
+    
+    nano_dirty = 1;
+}
+
+void nano_handle_backspace(void) {
+    if (nano_cursor_y >= NANO_MAX_LINES) {
+        return;
+    }
+    
+    if (nano_cursor_x > 0) {
+        /* Delete character within line */
+        for (int i = nano_cursor_x - 1; i < nano_line_lengths[nano_cursor_y]; i++) {
+            nano_lines[nano_cursor_y][i] = nano_lines[nano_cursor_y][i + 1];
+        }
+        if (nano_line_lengths[nano_cursor_y] > 0) {
+            nano_line_lengths[nano_cursor_y]--;
+        }
+        nano_lines[nano_cursor_y][nano_line_lengths[nano_cursor_y]] = '\0';
+        nano_cursor_x--;
+    } else if (nano_cursor_y > 0) {
+        /* Join with previous line */
+        int prev_line_len = nano_line_lengths[nano_cursor_y - 1];
+        int current_line_len = nano_line_lengths[nano_cursor_y];
+        
+        if (prev_line_len + current_line_len < NANO_MAX_LINE_LENGTH) {
+            /* Move current line content to previous line */
+            for (int i = 0; i < current_line_len; i++) {
+                nano_lines[nano_cursor_y - 1][prev_line_len + i] = nano_lines[nano_cursor_y][i];
+            }
+            nano_line_lengths[nano_cursor_y - 1] += current_line_len;
+            nano_lines[nano_cursor_y - 1][nano_line_lengths[nano_cursor_y - 1]] = '\0';
+            
+            /* Remove current line and shift lines up */
+            for (int i = nano_cursor_y; i < nano_total_lines - 1; i++) {
+                nano_line_lengths[i] = nano_line_lengths[i + 1];
+                strcpy_impl(nano_lines[i], nano_lines[i + 1]);
+            }
+            nano_total_lines--;
+            nano_cursor_y--;
+            nano_cursor_x = prev_line_len;
+        }
+    }
+    
+    nano_dirty = 1;
+}
+
+void nano_handle_enter(void) {
+    if (nano_total_lines >= NANO_MAX_LINES) {
+        return;
+    }
+    
+    /* Split current line at cursor position */
+    int current_line_len = nano_line_lengths[nano_cursor_y];
+    
+    /* Shift all lines below down */
+    for (int i = nano_total_lines; i > nano_cursor_y + 1; i--) {
+        nano_line_lengths[i] = nano_line_lengths[i - 1];
+        strcpy_impl(nano_lines[i], nano_lines[i - 1]);
+    }
+    
+    /* Create new line with content after cursor */
+    int new_line_len = 0;
+    for (int i = nano_cursor_x; i < current_line_len; i++) {
+        nano_lines[nano_cursor_y + 1][new_line_len++] = nano_lines[nano_cursor_y][i];
+    }
+    nano_lines[nano_cursor_y + 1][new_line_len] = '\0';
+    nano_line_lengths[nano_cursor_y + 1] = new_line_len;
+    
+    /* Truncate current line at cursor */
+    nano_lines[nano_cursor_y][nano_cursor_x] = '\0';
+    nano_line_lengths[nano_cursor_y] = nano_cursor_x;
+    
+    nano_total_lines++;
+    nano_cursor_y++;
+    nano_cursor_x = 0;
+    nano_dirty = 1;
+}
+
+void nano_move_cursor(int dx, int dy) {
+    int new_x = nano_cursor_x + dx;
+    int new_y = nano_cursor_y + dy;
+    
+    /* Clamp Y */
+    if (new_y < 0) new_y = 0;
+    if (new_y >= nano_total_lines) new_y = nano_total_lines - 1;
+    
+    /* Clamp X */
+    if (new_x < 0) new_x = 0;
+    if (new_x > nano_line_lengths[new_y]) new_x = nano_line_lengths[new_y];
+    
+    nano_cursor_x = new_x;
+    nano_cursor_y = new_y;
+    
+    nano_scroll_to_cursor();
+}
+
+void nano_scroll_to_cursor(void) {
+    if (nano_cursor_y < nano_viewport_y) {
+        nano_viewport_y = nano_cursor_y;
+    } else if (nano_cursor_y >= nano_viewport_y + NANO_VIEWPORT_HEIGHT) {
+        nano_viewport_y = nano_cursor_y - NANO_VIEWPORT_HEIGHT + 1;
+    }
+    
+    if (nano_viewport_y < 0) nano_viewport_y = 0;
+    if (nano_viewport_y > nano_total_lines - NANO_VIEWPORT_HEIGHT) {
+        nano_viewport_y = nano_total_lines - NANO_VIEWPORT_HEIGHT;
+    }
+    if (nano_viewport_y < 0) nano_viewport_y = 0;
+}
+
+void nano_save_file(void) {
+    if (!nano_dirty) {
+        /* File is already saved */
+        return;
+    }
+    
+    /* Convert lines back to file format */
+    uint32_t file_size = 0;
+    for (int i = 0; i < nano_total_lines && file_size < FS_IO_BUFFER_SIZE - 1; i++) {
+        for (int j = 0; j < nano_line_lengths[i] && file_size < FS_IO_BUFFER_SIZE - 2; j++) {
+            fs_io_buffer[file_size++] = (uint8_t)nano_lines[i][j];
+        }
+        if (file_size < FS_IO_BUFFER_SIZE - 1) {
+            fs_io_buffer[file_size++] = '\n';
+        }
+    }
+    
+    /* Write to file */
+    int result = fat12_write_file(nano_filename, fs_io_buffer, file_size);
+    if (result == FAT12_OK) {
+        nano_dirty = 0;
+    }
+}
+
+void nano_exit_editor(void) {
+    if (nano_dirty) {
+        /* Simple prompt - in a real implementation we'd ask for confirmation */
+        /* For now, just save and exit */
+        nano_save_file();
+    }
+    
+    nano_editor_active = 0;
+    
+    /* Restore shell screen */
+    vga_clear();
+    console_print("Welcome to ");
+    console_print(os_name);
+    console_print(" ");
+    console_print(os_version);
+    console_print("\n\n");
+    
+    /* Show current directory */
+    if (fat_ready) {
+        console_print("Current directory: ");
+        console_print(fat12_get_cwd());
+        console_print("\n");
+    }
+}
+
+/* Helper function to print at specific position (for status bar) */
+void console_print_to_pos(int y, int x, const char *str) {
+    if (!str) return;
+    for (int i = 0; str[i] != '\0' && x + i < VGA_WIDTH; i++) {
+        size_t pos = y * VGA_WIDTH + (x + i);
+        VGA_BUFFER[pos * 2] = str[i];
+        VGA_BUFFER[pos * 2 + 1] = 0x70;  /* Status bar attribute */
     }
 }
 
