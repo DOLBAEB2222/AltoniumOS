@@ -58,6 +58,18 @@ static uint8_t fs_io_buffer[FS_IO_BUFFER_SIZE];
 
 /* Keyboard state */
 static int ctrl_pressed = 0;
+static int extended_scancode_pending = 0;
+
+/* Nano editor status */
+#define NANO_EXIT_SAVE      1
+#define NANO_EXIT_DISCARD   0
+
+#define NANO_PROMPT_NONE         0
+#define NANO_PROMPT_SAVE_CONFIRM 1
+
+static int nano_prompt_state = NANO_PROMPT_NONE;
+static char nano_status_message[VGA_WIDTH + 1];
+static int nano_help_overlay_visible = 0;
 
 /* Theme system */
 typedef struct {
@@ -130,17 +142,29 @@ void render_prompt_line(void);
 uint8_t get_current_text_attr(void);
 uint8_t get_current_status_attr(void);
 
+char scancode_to_ascii(uint16_t scancode);
+void handle_console_scancode(uint16_t scancode);
+
 /* Nano editor functions */
 void nano_init_editor(const char *filename);
 void nano_render_editor(void);
-void nano_handle_keyboard(void);
-void nano_save_file(void);
-void nano_exit_editor(void);
+void nano_handle_scancode(uint16_t scancode, int is_release);
+int nano_save_file(void);
+void nano_exit_editor(int save_action);
 void nano_insert_char(char c);
 void nano_handle_backspace(void);
+void nano_handle_delete(void);
 void nano_handle_enter(void);
 void nano_move_cursor(int dx, int dy);
+void nano_move_to_line_start(void);
+void nano_move_to_line_end(void);
+void nano_page_scroll(int direction);
 void nano_scroll_to_cursor(void);
+void nano_cycle_theme(void);
+void nano_show_help_overlay(void);
+void nano_render_help_overlay(void);
+void nano_set_status_message(const char *msg);
+void nano_reset_status_message(void);
 void console_print_to_pos(int y, int x, const char *str);
 
 /* Keyboard input functions */
@@ -186,126 +210,34 @@ uint8_t get_current_status_attr(void) {
 }
 
 void handle_keyboard_input(void) {
-    uint8_t scancode = read_keyboard();
+    uint8_t raw_scancode = read_keyboard();
     
-    /* Track Ctrl key state */
-    if (scancode == 0x1D) {
-        ctrl_pressed = 1;
-        return;
-    } else if (scancode == 0x9D) {
-        ctrl_pressed = 0;
+    if (raw_scancode == 0xE0) {
+        extended_scancode_pending = 1;
         return;
     }
     
-    /* Handle differently if in nano editor mode */
+    int is_release = (raw_scancode & 0x80) ? 1 : 0;
+    uint8_t base_code = raw_scancode & 0x7F;
+    int extended = extended_scancode_pending;
+    extended_scancode_pending = 0;
+    uint16_t scancode = extended ? (0xE000 | base_code) : base_code;
+    
+    if (base_code == 0x1D) {
+        ctrl_pressed = is_release ? 0 : 1;
+        return;
+    }
+    
     if (nano_editor_active) {
-        nano_handle_keyboard();
+        nano_handle_scancode(scancode, is_release);
         return;
     }
     
-    /* Convert scancode to ASCII (US layout) */
-    char c = 0;
-    
-    /* Only handle key press (not release) - high bit not set */
-    if (!(scancode & 0x80)) {
-        /* US keyboard layout mapping (unshifted) */
-        switch (scancode) {
-            /* Numbers 1-0 */
-            case 0x02: c = '1'; break;
-            case 0x03: c = '2'; break;
-            case 0x04: c = '3'; break;
-            case 0x05: c = '4'; break;
-            case 0x06: c = '5'; break;
-            case 0x07: c = '6'; break;
-            case 0x08: c = '7'; break;
-            case 0x09: c = '8'; break;
-            case 0x0A: c = '9'; break;
-            case 0x0B: c = '0'; break;
-            
-            /* Special characters on number row */
-            case 0x0C: c = '-'; break;  /* - = */
-            case 0x0D: c = '='; break;  /* = + */
-            
-            /* Top letter row (Q-P) */
-            case 0x10: c = 'q'; break;
-            case 0x11: c = 'w'; break;
-            case 0x12: c = 'e'; break;
-            case 0x13: c = 'r'; break;
-            case 0x14: c = 't'; break;
-            case 0x15: c = 'y'; break;
-            case 0x16: c = 'u'; break;
-            case 0x17: c = 'i'; break;
-            case 0x18: c = 'o'; break;
-            case 0x19: c = 'p'; break;
-            
-            /* Special characters on top row */
-            case 0x1A: c = '['; break;  /* [ { */
-            case 0x1B: c = ']'; break;  /* ] } */
-            
-            /* Middle letter row (A-L) */
-            case 0x1E: c = 'a'; break;
-            case 0x1F: c = 's'; break;
-            case 0x20: c = 'd'; break;
-            case 0x21: c = 'f'; break;
-            case 0x22: c = 'g'; break;
-            case 0x23: c = 'h'; break;
-            case 0x24: c = 'j'; break;
-            case 0x25: c = 'k'; break;
-            case 0x26: c = 'l'; break;
-            
-            /* Special characters on middle row */
-            case 0x27: c = ';'; break;  /* ; : */
-            case 0x28: c = '\''; break; /* ' " */
-            
-            /* Backtick and backslash */
-            case 0x29: c = '`'; break;  /* ` ~ */
-            case 0x2B: c = '\\'; break; /* \ | */
-            
-            /* Bottom letter row (Z-M) */
-            case 0x2C: c = 'z'; break;
-            case 0x2D: c = 'x'; break;
-            case 0x2E: c = 'c'; break;
-            case 0x2F: c = 'v'; break;
-            case 0x30: c = 'b'; break;
-            case 0x31: c = 'n'; break;
-            case 0x32: c = 'm'; break;
-            
-            /* Special characters on bottom row */
-            case 0x33: c = ','; break;  /* , < */
-            case 0x34: c = '.'; break;  /* . > */
-            case 0x35: c = '/'; break;  /* / ? */
-            
-            /* Space bar */
-            case 0x39: c = ' '; break;
-            
-            /* Control keys */
-            case 0x0E: c = '\b'; break;  /* Backspace */
-            case 0x1C: c = '\n'; break;  /* Enter */
-            case 0x0F: c = '\t'; break;  /* Tab */
-        }
-        
-        /* Process the character */
-        if (c == '\n') {
-            /* Enter key - execute command */
-            console_putchar('\n');
-            input_buffer[input_pos] = '\0';
-            execute_command(input_buffer);
-            input_pos = 0;
-            command_executed = 1;  /* Mark command as executed */
-        } else if (c == '\b') {
-            /* Backspace key - remove from buffer and redraw prompt line */
-            if (input_pos > 0) {
-                input_pos--;
-                render_prompt_line();
-            }
-        } else if (c >= ' ' && c <= '~') {
-            /* Printable character - add to buffer and redraw prompt line */
-            if (input_pos < (int)(sizeof(input_buffer) - 1)) {
-                input_buffer[input_pos++] = c;
-                render_prompt_line();
-            }
-        }
+    if (is_release) {
+        return;
     }
+    
+    handle_console_scancode(scancode);
 }
 
 /* Get build date/time - these are string literals for now */
@@ -626,7 +558,7 @@ void handle_help(void) {
     console_print("  write FILE TXT - Create/overwrite a text file\n");
     console_print("  mkdir NAME     - Create a directory\n");
     console_print("  rm FILE        - Delete a file\n");
-    console_print("  nano FILE      - Text editor (Ctrl+S save, Ctrl+X exit)\n");
+    console_print("  nano FILE      - Text editor (Ctrl+S/Ctrl+X/Ctrl+T/Ctrl+H)\n");
     console_print("  theme [OPTION] - Switch theme (normal/blue/green) or 'list'\n");
     console_print("  shutdown       - Shut down the system\n");
     console_print("  help           - Display this help message\n");
@@ -1097,6 +1029,88 @@ void execute_command(const char *cmd_line) {
     }
 }
 
+char scancode_to_ascii(uint16_t scancode) {
+    if (scancode & 0xE000) {
+        return 0;
+    }
+    switch (scancode) {
+        case 0x02: return '1';
+        case 0x03: return '2';
+        case 0x04: return '3';
+        case 0x05: return '4';
+        case 0x06: return '5';
+        case 0x07: return '6';
+        case 0x08: return '7';
+        case 0x09: return '8';
+        case 0x0A: return '9';
+        case 0x0B: return '0';
+        case 0x0C: return '-';
+        case 0x0D: return '=';
+        case 0x10: return 'q';
+        case 0x11: return 'w';
+        case 0x12: return 'e';
+        case 0x13: return 'r';
+        case 0x14: return 't';
+        case 0x15: return 'y';
+        case 0x16: return 'u';
+        case 0x17: return 'i';
+        case 0x18: return 'o';
+        case 0x19: return 'p';
+        case 0x1A: return '[';
+        case 0x1B: return ']';
+        case 0x1E: return 'a';
+        case 0x1F: return 's';
+        case 0x20: return 'd';
+        case 0x21: return 'f';
+        case 0x22: return 'g';
+        case 0x23: return 'h';
+        case 0x24: return 'j';
+        case 0x25: return 'k';
+        case 0x26: return 'l';
+        case 0x27: return ';';
+        case 0x28: return '\'';
+        case 0x29: return '`';
+        case 0x2B: return '\\';
+        case 0x2C: return 'z';
+        case 0x2D: return 'x';
+        case 0x2E: return 'c';
+        case 0x2F: return 'v';
+        case 0x30: return 'b';
+        case 0x31: return 'n';
+        case 0x32: return 'm';
+        case 0x33: return ',';
+        case 0x34: return '.';
+        case 0x35: return '/';
+        case 0x39: return ' ';
+        case 0x0E: return '\b';
+        case 0x1C: return '\n';
+        case 0x0F: return '\t';
+        default: return 0;
+    }
+}
+
+void handle_console_scancode(uint16_t scancode) {
+    char c = scancode_to_ascii(scancode);
+    
+    if (c == '\n') {
+        console_putchar('\n');
+        input_buffer[input_pos] = '\0';
+        execute_command(input_buffer);
+        input_pos = 0;
+        command_executed = 1;
+    } else if (c == '\b') {
+        if (input_pos > 0) {
+            input_pos--;
+            render_prompt_line();
+        }
+    } else if (c >= ' ' && c <= '~') {
+        if (input_pos < (int)(sizeof(input_buffer) - 1)) {
+            input_buffer[input_pos++] = c;
+            render_prompt_line();
+        }
+    }
+}
+
 /* Nano editor implementation */
 void handle_nano_command(const char *args) {
     if (!fat_ready) {
@@ -1123,6 +1137,9 @@ void nano_init_editor(const char *filename) {
     nano_viewport_y = 0;
     nano_dirty = 0;
     nano_editor_active = 1;
+    nano_prompt_state = NANO_PROMPT_NONE;
+    nano_help_overlay_visible = 0;
+    nano_reset_status_message();
     
     /* Clear all lines */
     for (int i = 0; i < NANO_MAX_LINES; i++) {
@@ -1178,48 +1195,110 @@ void nano_render_editor(void) {
     uint8_t text_attr = get_current_text_attr();
     uint8_t status_attr = get_current_status_attr();
     
-    /* Clear screen */
     for (int i = 0; i < VGA_WIDTH * VGA_HEIGHT; i++) {
         VGA_BUFFER[i * 2] = ' ';
         VGA_BUFFER[i * 2 + 1] = text_attr;
     }
     
-    /* Render text viewport */
-    for (int i = 0; i < NANO_VIEWPORT_HEIGHT; i++) {
-        int line_index = nano_viewport_y + i;
-        if (line_index < nano_total_lines) {
-            /* Render line content */
-            for (int j = 0; j < nano_line_lengths[line_index] && j < VGA_WIDTH; j++) {
-                size_t pos = i * VGA_WIDTH + j;
-                VGA_BUFFER[pos * 2] = nano_lines[line_index][j];
+    for (int row = 0; row < NANO_VIEWPORT_HEIGHT && row < VGA_HEIGHT; row++) {
+        int line_index = nano_viewport_y + row;
+        if (line_index >= 0 && line_index < nano_total_lines) {
+            for (int col = 0; col < nano_line_lengths[line_index] && col < VGA_WIDTH; col++) {
+                size_t pos = row * VGA_WIDTH + col;
+                VGA_BUFFER[pos * 2] = nano_lines[line_index][col];
                 VGA_BUFFER[pos * 2 + 1] = text_attr;
             }
         }
     }
     
-    /* Render status bar */
     int status_line = NANO_VIEWPORT_HEIGHT;
-    for (int i = 0; i < VGA_WIDTH; i++) {
-        size_t pos = status_line * VGA_WIDTH + i;
-        VGA_BUFFER[pos * 2] = ' ';
-        VGA_BUFFER[pos * 2 + 1] = status_attr;
+    if (status_line < VGA_HEIGHT) {
+        for (int col = 0; col < VGA_WIDTH; col++) {
+            size_t pos = status_line * VGA_WIDTH + col;
+            VGA_BUFFER[pos * 2] = ' ';
+            VGA_BUFFER[pos * 2 + 1] = status_attr;
+        }
+        int status_x = 0;
+        console_print_to_pos(status_line, status_x, nano_filename);
+        status_x += strlen_impl(nano_filename);
+        if (status_x < VGA_WIDTH) {
+            console_print_to_pos(status_line, status_x, " | L:");
+            status_x += 5;
+        }
+        char line_buf[16];
+        int line_num = nano_cursor_y + 1;
+        if (line_num < 1) line_num = 1;
+        int temp = line_num;
+        int idx = 0;
+        char temp_digits[16];
+        if (temp == 0) {
+            line_buf[idx++] = '0';
+        } else {
+            int digit_count = 0;
+            while (temp > 0 && digit_count < (int)sizeof(temp_digits)) {
+                temp_digits[digit_count++] = '0' + (temp % 10);
+                temp /= 10;
+            }
+            while (digit_count > 0 && idx < (int)sizeof(line_buf) - 1) {
+                line_buf[idx++] = temp_digits[--digit_count];
+            }
+        }
+        line_buf[idx] = '\0';
+        console_print_to_pos(status_line, status_x, line_buf);
+        status_x += strlen_impl(line_buf);
+        console_print_to_pos(status_line, status_x, ",C:");
+        status_x += 3;
+        char col_buf[16];
+        int col_num = nano_cursor_x + 1;
+        if (col_num < 1) col_num = 1;
+        temp = col_num;
+        idx = 0;
+        if (temp == 0) {
+            col_buf[idx++] = '0';
+        } else {
+            int digit_count = 0;
+            while (temp > 0 && digit_count < (int)sizeof(temp_digits)) {
+                temp_digits[digit_count++] = '0' + (temp % 10);
+                temp /= 10;
+            }
+            while (digit_count > 0 && idx < (int)sizeof(col_buf) - 1) {
+                col_buf[idx++] = temp_digits[--digit_count];
+            }
+        }
+        col_buf[idx] = '\0';
+        console_print_to_pos(status_line, status_x, col_buf);
+        status_x += strlen_impl(col_buf);
+        if (nano_dirty) {
+            console_print_to_pos(status_line, status_x, " | [MODIFIED]");
+            status_x += 13;
+        }
+        console_print_to_pos(status_line, status_x, " | Theme: ");
+        status_x += 10;
+        char upper_theme[16];
+        int theme_idx = 0;
+        for (; themes[current_theme].name[theme_idx] != '\0' && theme_idx < (int)sizeof(upper_theme) - 1; theme_idx++) {
+            char c = themes[current_theme].name[theme_idx];
+            if (c >= 'a' && c <= 'z') {
+                c -= 32;
+            }
+            upper_theme[theme_idx] = c;
+        }
+        upper_theme[theme_idx] = '\0';
+        console_print_to_pos(status_line, status_x, upper_theme);
     }
     
-    /* Status bar content */
-    const char *status_text = "\"";
-    console_print_to_pos(status_line, 0, status_text);
-    console_print_to_pos(status_line, 1, nano_filename);
-    console_print_to_pos(status_line, 1 + strlen_impl(nano_filename), "\" ");
-    
-    if (nano_dirty) {
-        console_print_to_pos(status_line, 1 + strlen_impl(nano_filename) + 3, "[Modified] ");
+    int message_line = status_line + 1;
+    if (message_line < VGA_HEIGHT) {
+        for (int col = 0; col < VGA_WIDTH; col++) {
+            size_t pos = message_line * VGA_WIDTH + col;
+            VGA_BUFFER[pos * 2] = ' ';
+            VGA_BUFFER[pos * 2 + 1] = status_attr;
+        }
+        if (nano_status_message[0] != '\0') {
+            console_print_to_pos(message_line, 0, nano_status_message);
+        }
     }
     
-    console_print_to_pos(status_line, VGA_WIDTH - 30, "Theme:");
-    console_print_to_pos(status_line, VGA_WIDTH - 23, themes[current_theme].name);
-    console_print_to_pos(status_line, VGA_WIDTH - 20, " Ctrl+S:Save Ctrl+X:Exit");
-    
-    /* Update hardware cursor position */
     int screen_x = nano_cursor_x;
     int screen_y = nano_cursor_y - nano_viewport_y;
     if (screen_y >= 0 && screen_y < NANO_VIEWPORT_HEIGHT && screen_x < VGA_WIDTH) {
@@ -1227,122 +1306,134 @@ void nano_render_editor(void) {
     }
 }
 
-void nano_handle_keyboard(void) {
-    uint8_t scancode = read_keyboard();
-    
-    /* Track Ctrl key state */
-    if (scancode == 0x1D) {
-        ctrl_pressed = 1;
-        return;
-    } else if (scancode == 0x9D) {
-        ctrl_pressed = 0;
-        return;
-    }
-    
-    /* Only handle key press (not release) */
-    if (scancode & 0x80) {
-        return;
-    }
-    
-    /* Handle Ctrl key combinations */
-    if (ctrl_pressed) {
-        if (scancode == 0x1F) {
-            /* Ctrl+S - Save */
-            nano_save_file();
+void nano_handle_scancode(uint16_t scancode, int is_release) {
+    if (nano_help_overlay_visible) {
+        if (!is_release) {
+            nano_help_overlay_visible = 0;
+            nano_reset_status_message();
             nano_render_editor();
+        }
+        return;
+    }
+    
+    if (nano_prompt_state == NANO_PROMPT_SAVE_CONFIRM) {
+        if (is_release) {
             return;
-        } else if (scancode == 0x2D) {
-            /* Ctrl+X - Exit */
-            nano_exit_editor();
+        }
+        if (scancode == 0x01) {
+            nano_prompt_state = NANO_PROMPT_NONE;
+            nano_exit_editor(NANO_EXIT_DISCARD);
             return;
+        }
+        char response = scancode_to_ascii(scancode);
+        if (response == 'y') {
+            nano_prompt_state = NANO_PROMPT_NONE;
+            if (!nano_save_file()) {
+                nano_set_status_message("Save failed.");
+                nano_render_editor();
+                return;
+            }
+            nano_exit_editor(NANO_EXIT_SAVE);
+        } else if (response == 'n') {
+            nano_prompt_state = NANO_PROMPT_NONE;
+            nano_exit_editor(NANO_EXIT_DISCARD);
+        }
+        return;
+    }
+    
+    if (is_release) {
+        return;
+    }
+    
+    if (ctrl_pressed) {
+        switch (scancode) {
+            case 0x1F: /* Ctrl+S */
+                if (nano_save_file()) {
+                    nano_set_status_message("Saved.");
+                } else {
+                    nano_set_status_message("Save failed.");
+                }
+                nano_render_editor();
+                return;
+            case 0x2D: /* Ctrl+X */
+                if (nano_dirty) {
+                    nano_prompt_state = NANO_PROMPT_SAVE_CONFIRM;
+                    nano_set_status_message("Save changes? (Y=Yes, N=No, Esc=Discard)");
+                    nano_render_editor();
+                } else {
+                    nano_exit_editor(NANO_EXIT_SAVE);
+                }
+                return;
+            case 0x14: /* Ctrl+T */
+                nano_cycle_theme();
+                return;
+            case 0x23: /* Ctrl+H */
+                nano_show_help_overlay();
+                return;
         }
     }
     
-    /* Handle special key combinations first */
     switch (scancode) {
-        case 0x48:  /* Up arrow */
-            nano_move_cursor(0, -1);
-            nano_render_editor();
+        case 0x01: /* Escape */
+            nano_exit_editor(NANO_EXIT_DISCARD);
             return;
-        case 0x50:  /* Down arrow */
-            nano_move_cursor(0, 1);
-            nano_render_editor();
-            return;
-        case 0x4B:  /* Left arrow */
-            nano_move_cursor(-1, 0);
-            nano_render_editor();
-            return;
-        case 0x4D:  /* Right arrow */
-            nano_move_cursor(1, 0);
-            nano_render_editor();
-            return;
-        case 0x0E:  /* Backspace */
+        case 0x0E: /* Backspace */
             nano_handle_backspace();
-            nano_render_editor();
-            return;
-        case 0x1C:  /* Enter */
+            break;
+        case 0x1C: /* Enter */
             nano_handle_enter();
-            nano_render_editor();
-            return;
+            break;
+        case 0xE053:
+        case 0x53: /* Delete */
+            nano_handle_delete();
+            break;
+        case 0xE048:
+        case 0x48: /* Up */
+            nano_move_cursor(0, -1);
+            break;
+        case 0xE050:
+        case 0x50: /* Down */
+            nano_move_cursor(0, 1);
+            break;
+        case 0xE04B:
+        case 0x4B: /* Left */
+            nano_move_cursor(-1, 0);
+            break;
+        case 0xE04D:
+        case 0x4D: /* Right */
+            nano_move_cursor(1, 0);
+            break;
+        case 0xE047:
+        case 0x47: /* Home */
+            nano_move_to_line_start();
+            break;
+        case 0xE04F:
+        case 0x4F: /* End */
+            nano_move_to_line_end();
+            break;
+        case 0xE049:
+        case 0x49: /* Page Up */
+            nano_page_scroll(-1);
+            break;
+        case 0xE051:
+        case 0x51: /* Page Down */
+            nano_page_scroll(1);
+            break;
+        default: {
+            char c = scancode_to_ascii(scancode);
+            if (c >= ' ' && c <= '~') {
+                nano_insert_char(c);
+            } else if (c == '\t') {
+                for (int i = 0; i < 4; i++) {
+                    nano_insert_char(' ');
+                }
+            } else {
+                return;
+            }
+        }
     }
     
-    /* Convert scancode to ASCII for regular keys */
-    char c = 0;
-    switch (scancode) {
-        case 0x02: c = '1'; break;
-        case 0x03: c = '2'; break;
-        case 0x04: c = '3'; break;
-        case 0x05: c = '4'; break;
-        case 0x06: c = '5'; break;
-        case 0x07: c = '6'; break;
-        case 0x08: c = '7'; break;
-        case 0x09: c = '8'; break;
-        case 0x0A: c = '9'; break;
-        case 0x0B: c = '0'; break;
-        case 0x0C: c = '-'; break;
-        case 0x0D: c = '='; break;
-        case 0x10: c = 'q'; break;
-        case 0x11: c = 'w'; break;
-        case 0x12: c = 'e'; break;
-        case 0x13: c = 'r'; break;
-        case 0x14: c = 't'; break;
-        case 0x15: c = 'y'; break;
-        case 0x16: c = 'u'; break;
-        case 0x17: c = 'i'; break;
-        case 0x18: c = 'o'; break;
-        case 0x19: c = 'p'; break;
-        case 0x1A: c = '['; break;
-        case 0x1B: c = ']'; break;
-        case 0x1E: c = 'a'; break;
-        case 0x1F: c = 's'; break;
-        case 0x20: c = 'd'; break;
-        case 0x21: c = 'f'; break;
-        case 0x22: c = 'g'; break;
-        case 0x23: c = 'h'; break;
-        case 0x24: c = 'j'; break;
-        case 0x25: c = 'k'; break;
-        case 0x26: c = 'l'; break;
-        case 0x27: c = ';'; break;
-        case 0x28: c = '\''; break;
-        case 0x29: c = '`'; break;
-        case 0x2B: c = '\\'; break;
-        case 0x2C: c = 'z'; break;
-        case 0x2D: c = 'x'; break;
-        case 0x2E: c = 'c'; break;
-        case 0x2F: c = 'v'; break;
-        case 0x30: c = 'b'; break;
-        case 0x31: c = 'n'; break;
-        case 0x32: c = 'm'; break;
-        case 0x33: c = ','; break;
-        case 0x34: c = '.'; break;
-        case 0x35: c = '/'; break;
-        case 0x39: c = ' '; break;
-    }
-    
-    if (c >= ' ' && c <= '~') {
-        nano_insert_char(c);
-        nano_render_editor();
-    }
+    nano_render_editor();
 }
 
 void nano_insert_char(char c) {
@@ -1480,13 +1571,11 @@ void nano_scroll_to_cursor(void) {
     if (nano_viewport_y < 0) nano_viewport_y = 0;
 }
 
-void nano_save_file(void) {
+int nano_save_file(void) {
     if (!nano_dirty) {
-        /* File is already saved */
-        return;
+        return 1;
     }
     
-    /* Convert lines back to file format */
     uint32_t file_size = 0;
     for (int i = 0; i < nano_total_lines && file_size < FS_IO_BUFFER_SIZE - 1; i++) {
         for (int j = 0; j < nano_line_lengths[i] && file_size < FS_IO_BUFFER_SIZE - 2; j++) {
@@ -1497,23 +1586,31 @@ void nano_save_file(void) {
         }
     }
     
-    /* Write to file */
     int result = fat12_write_file(nano_filename, fs_io_buffer, file_size);
     if (result == FAT12_OK) {
         nano_dirty = 0;
+        return 1;
     }
+    return 0;
 }
 
-void nano_exit_editor(void) {
-    int was_dirty = nano_dirty;
-    
-    if (nano_dirty) {
-        nano_save_file();
+void nano_exit_editor(int save_action) {
+    int had_dirty = nano_dirty;
+    if (save_action == NANO_EXIT_SAVE && nano_dirty) {
+        if (!nano_save_file()) {
+            nano_set_status_message("Save failed.");
+            nano_render_editor();
+            return;
+        }
+        had_dirty = 1;
+    } else if (save_action == NANO_EXIT_DISCARD) {
+        nano_dirty = 0;
     }
     
     nano_editor_active = 0;
+    nano_prompt_state = NANO_PROMPT_NONE;
+    nano_help_overlay_visible = 0;
     
-    /* Restore shell screen */
     vga_clear();
     console_print("Welcome to ");
     console_print(os_name);
@@ -1521,18 +1618,153 @@ void nano_exit_editor(void) {
     console_print(os_version);
     console_print("\n\n");
     
-    if (was_dirty) {
+    if (save_action == NANO_EXIT_SAVE && had_dirty) {
         console_print("File saved: ");
+        console_print(nano_filename);
+        console_print("\n");
+    } else if (save_action == NANO_EXIT_DISCARD && had_dirty) {
+        console_print("Changes discarded: ");
         console_print(nano_filename);
         console_print("\n");
     }
     
-    /* Show current directory */
     if (fat_ready) {
         console_print("Current directory: ");
         console_print(fat12_get_cwd());
         console_print("\n");
     }
+}
+
+void nano_handle_delete(void) {
+    if (nano_cursor_y >= NANO_MAX_LINES || nano_cursor_y >= nano_total_lines) {
+        return;
+    }
+    
+    int line_len = nano_line_lengths[nano_cursor_y];
+    if (nano_cursor_x < line_len) {
+        for (int i = nano_cursor_x; i < line_len - 1; i++) {
+            nano_lines[nano_cursor_y][i] = nano_lines[nano_cursor_y][i + 1];
+        }
+        nano_line_lengths[nano_cursor_y]--;
+        nano_lines[nano_cursor_y][nano_line_lengths[nano_cursor_y]] = '\0';
+        nano_dirty = 1;
+    } else if (nano_cursor_y < nano_total_lines - 1) {
+        int next_line_len = nano_line_lengths[nano_cursor_y + 1];
+        if (line_len + next_line_len < NANO_MAX_LINE_LENGTH) {
+            for (int i = 0; i < next_line_len; i++) {
+                nano_lines[nano_cursor_y][line_len + i] = nano_lines[nano_cursor_y + 1][i];
+            }
+            nano_line_lengths[nano_cursor_y] += next_line_len;
+            nano_lines[nano_cursor_y][nano_line_lengths[nano_cursor_y]] = '\0';
+            
+            for (int i = nano_cursor_y + 1; i < nano_total_lines - 1; i++) {
+                nano_line_lengths[i] = nano_line_lengths[i + 1];
+                strcpy_impl(nano_lines[i], nano_lines[i + 1]);
+            }
+            nano_total_lines--;
+            nano_dirty = 1;
+        }
+    }
+}
+
+void nano_move_to_line_start(void) {
+    nano_cursor_x = 0;
+}
+
+void nano_move_to_line_end(void) {
+    if (nano_cursor_y < nano_total_lines) {
+        nano_cursor_x = nano_line_lengths[nano_cursor_y];
+    }
+}
+
+void nano_page_scroll(int direction) {
+    int lines_to_scroll = NANO_VIEWPORT_HEIGHT - 1;
+    if (direction < 0) {
+        nano_cursor_y -= lines_to_scroll;
+        if (nano_cursor_y < 0) {
+            nano_cursor_y = 0;
+        }
+    } else {
+        nano_cursor_y += lines_to_scroll;
+        if (nano_cursor_y >= nano_total_lines) {
+            nano_cursor_y = nano_total_lines - 1;
+        }
+        if (nano_cursor_y < 0) {
+            nano_cursor_y = 0;
+        }
+    }
+    
+    if (nano_cursor_x > nano_line_lengths[nano_cursor_y]) {
+        nano_cursor_x = nano_line_lengths[nano_cursor_y];
+    }
+    
+    nano_scroll_to_cursor();
+}
+
+void nano_cycle_theme(void) {
+    current_theme = (current_theme + 1) % THEME_COUNT;
+    nano_set_status_message("Theme changed.");
+    nano_render_editor();
+}
+
+void nano_show_help_overlay(void) {
+    nano_help_overlay_visible = 1;
+    nano_render_help_overlay();
+}
+
+void nano_render_help_overlay(void) {
+    uint8_t help_attr = VGA_ATTR(VGA_COLOR_BLACK, VGA_COLOR_LIGHT_CYAN);
+    
+    const char *help_lines[] = {
+        "                       NANO EDITOR HELP                        ",
+        "",
+        "  Navigation:                      Editing:",
+        "    Arrow Keys - Move cursor         Backspace - Delete before cursor",
+        "    Home       - Start of line       Delete    - Delete at cursor",
+        "    End        - End of line         Enter     - New line",
+        "    Page Up    - Scroll up",
+        "    Page Down  - Scroll down",
+        "",
+        "  Commands:                        Theme:",
+        "    Ctrl+S - Save file                Ctrl+T - Cycle theme",
+        "    Ctrl+X - Exit (prompt if dirty)   Current: ",
+        "    Ctrl+H - This help",
+        "    Escape - Exit without saving",
+        "",
+        "                   Press any key to close help",
+        0
+    };
+    
+    int start_y = 3;
+    int start_x = 5;
+    
+    for (int i = 0; help_lines[i] != 0; i++) {
+        for (int j = 0; help_lines[i][j] != '\0' && j < VGA_WIDTH - start_x - 5; j++) {
+            size_t pos = (start_y + i) * VGA_WIDTH + (start_x + j);
+            VGA_BUFFER[pos * 2] = help_lines[i][j];
+            VGA_BUFFER[pos * 2 + 1] = help_attr;
+        }
+    }
+    
+    size_t pos = (start_y + 11) * VGA_WIDTH + (start_x + 47);
+    for (int j = 0; themes[current_theme].name[j] != '\0'; j++) {
+        VGA_BUFFER[pos * 2] = themes[current_theme].name[j];
+        VGA_BUFFER[pos * 2 + 1] = help_attr;
+        pos++;
+    }
+}
+
+void nano_set_status_message(const char *msg) {
+    int i = 0;
+    while (msg[i] != '\0' && i < VGA_WIDTH) {
+        nano_status_message[i] = msg[i];
+        i++;
+    }
+    nano_status_message[i] = '\0';
+}
+
+void nano_reset_status_message(void) {
+    nano_status_message[0] = '\0';
 }
 
 /* Helper function to print at specific position (for status bar) */
