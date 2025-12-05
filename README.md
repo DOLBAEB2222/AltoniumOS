@@ -19,7 +19,8 @@ This OS includes the following console commands:
 - **write FILE TEXT** – Create or overwrite an 8.3 text file with the provided content
 - **mkdir NAME** – Create a directory inside the current working directory
 - **rm FILE** – Delete a file from the current working directory
-- **nano FILE** – Simple text editor with full-screen editing (type 's' at start of empty file to save, 'x' at start of empty file to exit)
+- **nano FILE** – Simple text editor with full-screen editing (Ctrl+S to save, Ctrl+X to exit)
+- **theme [OPTION]** – Switch color theme (normal/blue/green) or 'list' to show available themes
 - **shutdown** – Gracefully shut down the system (attempts ACPI power-off via port 0x604)
 - **help** – Display all available commands and usage hints
 
@@ -44,6 +45,28 @@ On top of the ATA driver, AltoniumOS now mounts a FAT12 volume during boot:
 - Shell commands (`ls`, `pwd`, `cd`, `cat`, `write`, `mkdir`, `rm`) call into the FAT12 core for traversal and file manipulation
 - Every update touches both FAT copies and flushes directory metadata back to disk
 - Limitations: 8.3 uppercase filenames, small text-only writes via the shell (16 KB buffer), and simple error handling (invalid names, disk full, non-directory targets)
+
+### Theme System
+
+AltoniumOS includes a theme system that allows you to customize the console appearance:
+
+- **Three built-in themes:**
+  - **normal** – Classic white text on black background (default)
+  - **blue** – White text on blue background with cyan/yellow status bar
+  - **green** – Light green text on black background with green status bar
+
+- **Theme persistence:** The selected theme persists during the current session and applies to all screens including the nano text editor
+
+- **Switch themes:** Use the `theme` command:
+  ```bash
+  theme normal      # Switch to normal theme
+  theme blue        # Switch to blue theme
+  theme green       # Switch to green theme
+  theme list        # Show all available themes
+  theme             # Show current theme
+  ```
+
+- **Nano editor integration:** The current theme is displayed in the nano status bar and automatically applied to all nano editor sessions
 
 ## Building
 
