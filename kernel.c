@@ -11,6 +11,26 @@ typedef int ssize_t;
 #define VGA_HEIGHT 25
 #define VGA_ATTR_DEFAULT 0x07  /* White on black */
 
+/* VGA color codes */
+#define VGA_COLOR_BLACK 0x0
+#define VGA_COLOR_BLUE 0x1
+#define VGA_COLOR_GREEN 0x2
+#define VGA_COLOR_CYAN 0x3
+#define VGA_COLOR_RED 0x4
+#define VGA_COLOR_MAGENTA 0x5
+#define VGA_COLOR_BROWN 0x6
+#define VGA_COLOR_LIGHT_GRAY 0x7
+#define VGA_COLOR_DARK_GRAY 0x8
+#define VGA_COLOR_LIGHT_BLUE 0x9
+#define VGA_COLOR_LIGHT_GREEN 0xA
+#define VGA_COLOR_LIGHT_CYAN 0xB
+#define VGA_COLOR_LIGHT_RED 0xC
+#define VGA_COLOR_LIGHT_MAGENTA 0xD
+#define VGA_COLOR_YELLOW 0xE
+#define VGA_COLOR_WHITE 0xF
+
+#define VGA_ATTR(fg, bg) ((bg << 4) | fg)
+
 typedef struct {
     uint32_t eax;
     uint32_t ebx;
@@ -35,6 +55,30 @@ static int prompt_line_y = 0;
 static int fat_ready = 0;
 #define FS_IO_BUFFER_SIZE 16384
 static uint8_t fs_io_buffer[FS_IO_BUFFER_SIZE];
+
+/* Keyboard state */
+static int ctrl_pressed = 0;
+
+/* Theme system */
+typedef struct {
+    const char *name;
+    uint8_t text_attr;
+    uint8_t status_attr;
+    uint8_t cursor_attr;
+} theme_t;
+
+#define THEME_NORMAL 0
+#define THEME_BLUE 1
+#define THEME_GREEN 2
+#define THEME_COUNT 3
+
+static theme_t themes[THEME_COUNT] = {
+    {"normal", VGA_ATTR(VGA_COLOR_LIGHT_GRAY, VGA_COLOR_BLACK), VGA_ATTR(VGA_COLOR_BLACK, VGA_COLOR_LIGHT_GRAY), VGA_ATTR(VGA_COLOR_WHITE, VGA_COLOR_BLACK)},
+    {"blue", VGA_ATTR(VGA_COLOR_WHITE, VGA_COLOR_BLUE), VGA_ATTR(VGA_COLOR_YELLOW, VGA_COLOR_CYAN), VGA_ATTR(VGA_COLOR_YELLOW, VGA_COLOR_BLUE)},
+    {"green", VGA_ATTR(VGA_COLOR_LIGHT_GREEN, VGA_COLOR_BLACK), VGA_ATTR(VGA_COLOR_BLACK, VGA_COLOR_LIGHT_GREEN), VGA_ATTR(VGA_COLOR_YELLOW, VGA_COLOR_BLACK)}
+};
+
+static int current_theme = THEME_NORMAL;
 
 /* External: defined in assembly */
 extern void halt_cpu(void);
@@ -78,10 +122,13 @@ void handle_write_command(const char *args);
 void handle_mkdir_command(const char *args);
 void handle_rm_command(const char *args);
 void handle_nano_command(const char *args);
+void handle_theme_command(const char *args);
 void execute_command(const char *cmd_line);
 void handle_keyboard_input(void);
 void update_hardware_cursor(int x, int y);
 void render_prompt_line(void);
+uint8_t get_current_text_attr(void);
+uint8_t get_current_status_attr(void);
 
 /* Nano editor functions */
 void nano_init_editor(const char *filename);
@@ -130,8 +177,25 @@ uint8_t read_keyboard(void) {
     return inb(0x60);
 }
 
+uint8_t get_current_text_attr(void) {
+    return themes[current_theme].text_attr;
+}
+
+uint8_t get_current_status_attr(void) {
+    return themes[current_theme].status_attr;
+}
+
 void handle_keyboard_input(void) {
     uint8_t scancode = read_keyboard();
+    
+    /* Track Ctrl key state */
+    if (scancode == 0x1D) {
+        ctrl_pressed = 1;
+        return;
+    } else if (scancode == 0x9D) {
+        ctrl_pressed = 0;
+        return;
+    }
     
     /* Handle differently if in nano editor mode */
     if (nano_editor_active) {
@@ -262,12 +326,13 @@ void get_cpuid(uint32_t eax, cpuid_t *regs) {
 
 void render_prompt_line(void) {
     int line_y = prompt_line_y;
+    uint8_t text_attr = get_current_text_attr();
     
     /* Clear from prompt start to end of line */
     for (int i = prompt_line_start_x; i < VGA_WIDTH; i++) {
         size_t pos = line_y * VGA_WIDTH + i;
         VGA_BUFFER[pos * 2] = ' ';
-        VGA_BUFFER[pos * 2 + 1] = VGA_ATTR_DEFAULT;
+        VGA_BUFFER[pos * 2 + 1] = text_attr;
     }
     
     /* Write input buffer content */
@@ -275,7 +340,7 @@ void render_prompt_line(void) {
         size_t pos = line_y * VGA_WIDTH + (prompt_line_start_x + i);
         if (prompt_line_start_x + i < VGA_WIDTH) {
             VGA_BUFFER[pos * 2] = input_buffer[i];
-            VGA_BUFFER[pos * 2 + 1] = VGA_ATTR_DEFAULT;
+            VGA_BUFFER[pos * 2 + 1] = text_attr;
         }
     }
     
@@ -283,7 +348,7 @@ void render_prompt_line(void) {
     if (prompt_line_start_x + input_pos < VGA_WIDTH) {
         size_t pos = line_y * VGA_WIDTH + (prompt_line_start_x + input_pos);
         VGA_BUFFER[pos * 2] = '>';
-        VGA_BUFFER[pos * 2 + 1] = VGA_ATTR_DEFAULT;
+        VGA_BUFFER[pos * 2 + 1] = text_attr;
     }
     
     /* Update hardware cursor position (after the input, before the >) */
@@ -327,9 +392,10 @@ void vga_write_char(char c, uint8_t attr) {
 
 /* Clear VGA buffer */
 void vga_clear(void) {
+    uint8_t text_attr = get_current_text_attr();
     for (int i = 0; i < VGA_WIDTH * VGA_HEIGHT; i++) {
         VGA_BUFFER[i * 2] = ' ';
-        VGA_BUFFER[i * 2 + 1] = VGA_ATTR_DEFAULT;
+        VGA_BUFFER[i * 2 + 1] = text_attr;
     }
     cursor_x = 0;
     cursor_y = 0;
@@ -339,14 +405,16 @@ void vga_clear(void) {
 /* Print a string */
 void console_print(const char *str) {
     if (!str) return;
+    uint8_t text_attr = get_current_text_attr();
     for (int i = 0; str[i] != '\0'; i++) {
-        vga_write_char(str[i], VGA_ATTR_DEFAULT);
+        vga_write_char(str[i], text_attr);
     }
 }
 
 /* Print a single character */
 void console_putchar(char c) {
-    vga_write_char(c, VGA_ATTR_DEFAULT);
+    uint8_t text_attr = get_current_text_attr();
+    vga_write_char(c, text_attr);
 }
 
 /* Simple string utilities */
@@ -558,7 +626,8 @@ void handle_help(void) {
     console_print("  write FILE TXT - Create/overwrite a text file\n");
     console_print("  mkdir NAME     - Create a directory\n");
     console_print("  rm FILE        - Delete a file\n");
-    console_print("  nano FILE      - Text editor (s=save, x=exit at start of empty file)\n");
+    console_print("  nano FILE      - Text editor (Ctrl+S save, Ctrl+X exit)\n");
+    console_print("  theme [OPTION] - Switch theme (normal/blue/green) or 'list'\n");
     console_print("  shutdown       - Shut down the system\n");
     console_print("  help           - Display this help message\n");
 }
@@ -899,6 +968,55 @@ void handle_rm_command(const char *args) {
     console_print("File deleted\n");
 }
 
+void handle_theme_command(const char *args) {
+    const char *cursor = args;
+    char option_buf[32];
+    if (read_token(&cursor, option_buf, sizeof(option_buf)) == 0) {
+        console_print("Current theme: ");
+        console_print(themes[current_theme].name);
+        console_print("\nUsage: theme [normal|blue|green|list]\n");
+        return;
+    }
+    
+    if (strcmp_impl(option_buf, "list") == 0) {
+        console_print("Available themes:\n");
+        for (int i = 0; i < THEME_COUNT; i++) {
+            console_print("  ");
+            console_print(themes[i].name);
+            if (i == current_theme) {
+                console_print(" (current)");
+            }
+            console_print("\n");
+        }
+        return;
+    }
+    
+    int found = -1;
+    for (int i = 0; i < THEME_COUNT; i++) {
+        if (strcmp_impl(option_buf, themes[i].name) == 0) {
+            found = i;
+            break;
+        }
+    }
+    
+    if (found == -1) {
+        console_print("Unknown theme: ");
+        console_print(option_buf);
+        console_print("\nAvailable: normal, blue, green\n");
+        return;
+    }
+    
+    current_theme = found;
+    console_print("Theme changed to: ");
+    console_print(themes[current_theme].name);
+    console_print("\n");
+    
+    vga_clear();
+    console_print("Theme applied: ");
+    console_print(themes[current_theme].name);
+    console_print("\n\n");
+}
+
 /* Parse and execute commands */
 void execute_command(const char *cmd_line) {
     if (!cmd_line || *cmd_line == '\0') {
@@ -962,6 +1080,10 @@ void execute_command(const char *cmd_line) {
                (cmd_line[4] == '\0' || cmd_line[4] == ' ' || cmd_line[4] == '\n')) {
         const char *args = cmd_line + 4;
         handle_nano_command(args);
+    } else if (strncmp_impl(cmd_line, "theme", 5) == 0 &&
+               (cmd_line[5] == '\0' || cmd_line[5] == ' ' || cmd_line[5] == '\n')) {
+        const char *args = cmd_line + 5;
+        handle_theme_command(args);
     } else if (strncmp_impl(cmd_line, "shutdown", 8) == 0 && 
                (cmd_line[8] == '\0' || cmd_line[8] == ' ' || cmd_line[8] == '\n')) {
         handle_shutdown();
@@ -1053,8 +1175,14 @@ void nano_init_editor(const char *filename) {
 }
 
 void nano_render_editor(void) {
+    uint8_t text_attr = get_current_text_attr();
+    uint8_t status_attr = get_current_status_attr();
+    
     /* Clear screen */
-    vga_clear();
+    for (int i = 0; i < VGA_WIDTH * VGA_HEIGHT; i++) {
+        VGA_BUFFER[i * 2] = ' ';
+        VGA_BUFFER[i * 2 + 1] = text_attr;
+    }
     
     /* Render text viewport */
     for (int i = 0; i < NANO_VIEWPORT_HEIGHT; i++) {
@@ -1064,7 +1192,7 @@ void nano_render_editor(void) {
             for (int j = 0; j < nano_line_lengths[line_index] && j < VGA_WIDTH; j++) {
                 size_t pos = i * VGA_WIDTH + j;
                 VGA_BUFFER[pos * 2] = nano_lines[line_index][j];
-                VGA_BUFFER[pos * 2 + 1] = VGA_ATTR_DEFAULT;
+                VGA_BUFFER[pos * 2 + 1] = text_attr;
             }
         }
     }
@@ -1074,7 +1202,7 @@ void nano_render_editor(void) {
     for (int i = 0; i < VGA_WIDTH; i++) {
         size_t pos = status_line * VGA_WIDTH + i;
         VGA_BUFFER[pos * 2] = ' ';
-        VGA_BUFFER[pos * 2 + 1] = 0x70;  /* White on blue */
+        VGA_BUFFER[pos * 2 + 1] = status_attr;
     }
     
     /* Status bar content */
@@ -1087,7 +1215,9 @@ void nano_render_editor(void) {
         console_print_to_pos(status_line, 1 + strlen_impl(nano_filename) + 3, "[Modified] ");
     }
     
-    console_print_to_pos(status_line, VGA_WIDTH - 20, "Ctrl+S Save | Ctrl+X Exit");
+    console_print_to_pos(status_line, VGA_WIDTH - 30, "Theme:");
+    console_print_to_pos(status_line, VGA_WIDTH - 23, themes[current_theme].name);
+    console_print_to_pos(status_line, VGA_WIDTH - 20, " Ctrl+S:Save Ctrl+X:Exit");
     
     /* Update hardware cursor position */
     int screen_x = nano_cursor_x;
@@ -1100,9 +1230,32 @@ void nano_render_editor(void) {
 void nano_handle_keyboard(void) {
     uint8_t scancode = read_keyboard();
     
+    /* Track Ctrl key state */
+    if (scancode == 0x1D) {
+        ctrl_pressed = 1;
+        return;
+    } else if (scancode == 0x9D) {
+        ctrl_pressed = 0;
+        return;
+    }
+    
     /* Only handle key press (not release) */
     if (scancode & 0x80) {
         return;
+    }
+    
+    /* Handle Ctrl key combinations */
+    if (ctrl_pressed) {
+        if (scancode == 0x1F) {
+            /* Ctrl+S - Save */
+            nano_save_file();
+            nano_render_editor();
+            return;
+        } else if (scancode == 0x2D) {
+            /* Ctrl+X - Exit */
+            nano_exit_editor();
+            return;
+        }
     }
     
     /* Handle special key combinations first */
@@ -1184,19 +1337,6 @@ void nano_handle_keyboard(void) {
         case 0x34: c = '.'; break;
         case 0x35: c = '/'; break;
         case 0x39: c = ' '; break;
-    }
-    
-    /* Handle special control sequences - simple detection */
-    if (c == 'x' && nano_cursor_x == 0 && nano_cursor_y == 0 && nano_total_lines == 1 && nano_line_lengths[0] == 0) {
-        /* Special case: if user types 'x' as first character in empty file, treat as Ctrl+X to exit */
-        nano_exit_editor();
-        return;
-    }
-    
-    if (c == 's' && nano_cursor_x == 0 && nano_cursor_y == 0 && nano_total_lines == 1 && nano_line_lengths[0] == 0) {
-        /* Special case: if user types 's' as first character in empty file, treat as Ctrl+S to save */
-        nano_save_file();
-        return;
     }
     
     if (c >= ' ' && c <= '~') {
@@ -1365,9 +1505,9 @@ void nano_save_file(void) {
 }
 
 void nano_exit_editor(void) {
+    int was_dirty = nano_dirty;
+    
     if (nano_dirty) {
-        /* Simple prompt - in a real implementation we'd ask for confirmation */
-        /* For now, just save and exit */
         nano_save_file();
     }
     
@@ -1381,6 +1521,12 @@ void nano_exit_editor(void) {
     console_print(os_version);
     console_print("\n\n");
     
+    if (was_dirty) {
+        console_print("File saved: ");
+        console_print(nano_filename);
+        console_print("\n");
+    }
+    
     /* Show current directory */
     if (fat_ready) {
         console_print("Current directory: ");
@@ -1392,10 +1538,11 @@ void nano_exit_editor(void) {
 /* Helper function to print at specific position (for status bar) */
 void console_print_to_pos(int y, int x, const char *str) {
     if (!str) return;
+    uint8_t status_attr = get_current_status_attr();
     for (int i = 0; str[i] != '\0' && x + i < VGA_WIDTH; i++) {
         size_t pos = y * VGA_WIDTH + (x + i);
         VGA_BUFFER[pos * 2] = str[i];
-        VGA_BUFFER[pos * 2 + 1] = 0x70;  /* Status bar attribute */
+        VGA_BUFFER[pos * 2 + 1] = status_attr;
     }
 }
 
