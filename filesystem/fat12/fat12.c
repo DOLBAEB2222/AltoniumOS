@@ -1,4 +1,4 @@
-#include "fat12.h"
+#include <fs/fat12.h>
 
 #define FAT12_CLUSTER_FREE 0x000
 #define FAT12_CLUSTER_EOC  0x0FF8

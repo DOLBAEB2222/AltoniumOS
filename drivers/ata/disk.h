@@ -1,10 +1,7 @@
 #ifndef DISK_H
 #define DISK_H
 
-/* Use custom type definitions to match kernel.c */
-typedef unsigned char uint8_t;
-typedef unsigned short uint16_t;
-typedef unsigned int uint32_t;
+#include <kernel/types.h>
 
 /* ATA PIO Driver for Primary IDE Channel */
 

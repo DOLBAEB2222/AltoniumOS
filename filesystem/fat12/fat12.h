@@ -1,7 +1,8 @@
 #ifndef FAT12_H
 #define FAT12_H
 
-#include "disk.h"
+#include <kernel/types.h>
+#include <drivers/disk.h>
 
 #define FAT12_ATTR_READ_ONLY 0x01
 #define FAT12_ATTR_HIDDEN    0x02

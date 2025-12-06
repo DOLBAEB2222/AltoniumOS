@@ -8,23 +8,23 @@ echo "This test verifies:"
 echo "1. Theme command is recognized"
 echo "2. Help text includes theme command"
 echo "3. Help text shows Ctrl+S and Ctrl+X for nano"
-echo "4. Theme system code is present in kernel.c"
+echo "4. Theme system code is present in kernel/main.c"
 echo ""
 
-# Check if kernel.c contains theme system
-echo "Checking for theme system in kernel.c..."
-if grep -q "theme_t themes" kernel.c && \
-   grep -q "handle_theme_command" kernel.c && \
-   grep -q "get_current_text_attr" kernel.c; then
-    echo "✓ Theme system found in kernel.c"
-else
-    echo "✗ Theme system NOT found in kernel.c"
+# Check if kernel/main.c contains theme system
+echo "Checking for theme system in kernel/main.c..."
+if grep -q "theme_t themes" kernel/main.c && \
+   grep -q "handle_theme_command" kernel/main.c && \
+   grep -q "get_current_text_attr" kernel/main.c; then
+     echo "✓ Theme system found in kernel/main.c"
+ else
+     echo "✗ Theme system NOT found in kernel/main.c"
     exit 1
 fi
 
 # Check if help text includes theme command
 echo "Checking help text..."
-if grep -q "theme.*Switch theme" kernel.c; then
+if grep -q "theme.*Switch theme" kernel/main.c; then
     echo "✓ Theme command in help text"
 else
     echo "✗ Theme command NOT in help text"
@@ -32,7 +32,7 @@ else
 fi
 
 # Check if help text mentions Ctrl+S and Ctrl+X
-if grep -q "Ctrl+S.*Ctrl+X" kernel.c; then
+if grep -q "Ctrl+S.*Ctrl+X" kernel/main.c; then
     echo "✓ Nano shortcuts (Ctrl+S, Ctrl+X) in help text"
 else
     echo "✗ Nano shortcuts NOT in help text"
@@ -41,10 +41,10 @@ fi
 
 # Check for Ctrl key handling
 echo "Checking Ctrl key handling..."
-if grep -q "ctrl_pressed" kernel.c && \
-   grep -q "scancode == 0x1D" kernel.c && \
-   grep -q "scancode == 0x1F" kernel.c && \
-   grep -q "scancode == 0x2D" kernel.c; then
+if grep -q "ctrl_pressed" kernel/main.c && \
+   grep -q "scancode == 0x1D" kernel/main.c && \
+   grep -q "scancode == 0x1F" kernel/main.c && \
+   grep -q "scancode == 0x2D" kernel/main.c; then
     echo "✓ Ctrl key handling implemented"
 else
     echo "✗ Ctrl key handling NOT properly implemented"
@@ -53,9 +53,9 @@ fi
 
 # Check for theme definitions
 echo "Checking theme definitions..."
-if grep -q "THEME_NORMAL" kernel.c && \
-   grep -q "THEME_BLUE" kernel.c && \
-   grep -q "THEME_GREEN" kernel.c; then
+if grep -q "THEME_NORMAL" kernel/main.c && \
+   grep -q "THEME_BLUE" kernel/main.c && \
+   grep -q "THEME_GREEN" kernel/main.c; then
     echo "✓ Three themes defined (normal, blue, green)"
 else
     echo "✗ Theme definitions incomplete"
@@ -64,8 +64,8 @@ fi
 
 # Check for VGA color attributes
 echo "Checking VGA color system..."
-if grep -q "VGA_ATTR(fg, bg)" kernel.c && \
-   grep -q "VGA_COLOR_" kernel.c; then
+if grep -q "VGA_ATTR(fg, bg)" kernel/main.c && \
+   grep -q "VGA_COLOR_" kernel/main.c; then
     echo "✓ VGA color system implemented"
 else
     echo "✗ VGA color system NOT found"
