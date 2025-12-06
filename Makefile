@@ -1,4 +1,4 @@
-.PHONY: all clean build run iso iso-bios iso-uefi img run-iso run-iso-uefi run-img
+.PHONY: all clean build run iso iso-bios iso-uefi iso-hybrid img run-iso run-iso-uefi run-iso-hybrid run-img
 
 AS = nasm
 CC = gcc
@@ -14,8 +14,10 @@ UEFI_LIBS = -lgnuefi -lefi
 BUILD_DIR = build
 DIST_DIR = dist
 UEFI_STAGE_DIR = $(DIST_DIR)/uefi_iso
+HYBRID_STAGE_DIR = $(DIST_DIR)/hybrid_iso
 ISO_BIOS = $(DIST_DIR)/os.iso
 ISO_UEFI = $(DIST_DIR)/os-uefi.iso
+ISO_HYBRID = $(DIST_DIR)/os-hybrid.iso
 
 KERNEL_OBJS = $(BUILD_DIR)/kernel_entry.o \
 	$(BUILD_DIR)/main.o \
@@ -78,6 +80,9 @@ $(DIST_DIR)/kernel.elf: $(KERNEL_OBJS) dirs
 $(DIST_DIR)/kernel.bin: $(DIST_DIR)/kernel.elf
 	objcopy -O binary $< $@
 
+$(DIST_DIR)/kernel64.elf: kernel64_stub.c dirs
+	$(CC) -m64 -ffreestanding -fno-stack-protector -nostdlib -o $@ $< -Wl,--oformat=elf64-x86-64 -Wl,-Ttext=0x100000 -Wl,--build-id=none
+
 $(DIST_DIR)/boot.bin: boot.asm dirs
 	$(AS) -f bin -o $@ $<
 
@@ -95,7 +100,7 @@ $(DIST_DIR)/EFI/ALTONIUM/GRUBX64.EFI: grub-uefi.cfg $(DIST_DIR)/kernel.elf dirs
 
 bootable: img
 
-iso: iso-bios iso-uefi
+iso: iso-hybrid
 
 iso-bios: $(ISO_BIOS)
 
@@ -121,6 +126,25 @@ $(ISO_UEFI): $(DIST_DIR)/kernel.elf $(DIST_DIR)/EFI/BOOT/BOOTX64.EFI $(DIST_DIR)
 	@xorriso -as mkisofs -R -J -l -e EFI/BOOT/BOOTX64.EFI -no-emul-boot -isohybrid-gpt-basdat -o $@ $(UEFI_STAGE_DIR) >/dev/null
 	@echo "UEFI ISO image created at $@"
 
+iso-hybrid: $(ISO_HYBRID)
+
+$(ISO_HYBRID): $(DIST_DIR)/kernel.elf $(DIST_DIR)/kernel64.elf $(DIST_DIR)/EFI/BOOT/BOOTX64.EFI $(DIST_DIR)/EFI/ALTONIUM/GRUBX64.EFI
+	@echo "Creating hybrid BIOS/UEFI bootable ISO image..."
+	@rm -rf $(HYBRID_STAGE_DIR)
+	@mkdir -p $(HYBRID_STAGE_DIR)/boot/grub
+	@mkdir -p $(HYBRID_STAGE_DIR)/boot/x86
+	@mkdir -p $(HYBRID_STAGE_DIR)/boot/x64
+	@mkdir -p $(HYBRID_STAGE_DIR)/EFI/BOOT
+	@mkdir -p $(HYBRID_STAGE_DIR)/EFI/ALTONIUM
+	@cp $(DIST_DIR)/kernel.elf $(HYBRID_STAGE_DIR)/boot/x86/kernel.elf
+	@cp $(DIST_DIR)/kernel64.elf $(HYBRID_STAGE_DIR)/boot/x64/kernel64.elf
+	@cp $(DIST_DIR)/EFI/BOOT/BOOTX64.EFI $(HYBRID_STAGE_DIR)/EFI/BOOT/BOOTX64.EFI
+	@cp $(DIST_DIR)/EFI/ALTONIUM/GRUBX64.EFI $(HYBRID_STAGE_DIR)/EFI/ALTONIUM/GRUBX64.EFI
+	@cp grub/hybrid.cfg $(HYBRID_STAGE_DIR)/boot/grub/grub.cfg
+	@grub-mkrescue -o $@ $(HYBRID_STAGE_DIR) 2>/dev/null
+	@echo "Hybrid ISO image created at $@"
+	@echo "This ISO boots on both BIOS and UEFI systems"
+
 img: $(DIST_DIR)/boot.bin $(DIST_DIR)/stage2.bin $(DIST_DIR)/kernel.bin scripts/build_fat12_image.py
 	@echo "Building FAT12 disk image..."
 	@python3 scripts/build_fat12_image.py --boot $(DIST_DIR)/boot.bin --stage2 $(DIST_DIR)/stage2.bin --kernel $(DIST_DIR)/kernel.bin --output $(DIST_DIR)/os.img
@@ -131,6 +155,10 @@ run-iso: iso-bios
 
 run-iso-uefi: iso-uefi
 	@echo "Run UEFI ISO with: qemu-system-x86_64 -bios /usr/share/OVMF/OVMF_CODE_4M.fd -cdrom $(ISO_UEFI)"
+
+run-iso-hybrid: iso-hybrid
+	@echo "Run hybrid ISO in BIOS mode: qemu-system-i386 -cdrom $(ISO_HYBRID)"
+	@echo "Run hybrid ISO in UEFI mode: qemu-system-x86_64 -bios /usr/share/OVMF/OVMF_CODE_4M.fd -cdrom $(ISO_HYBRID)"
 
 run-img: img
 	@echo "Run IMG with: qemu-system-i386 -hda $(DIST_DIR)/os.img"
@@ -143,16 +171,18 @@ clean:
 
 help:
 	@echo "Targets:"
-	@echo "  all          - Build the kernel (default)"
-	@echo "  build        - Build the kernel"
-	@echo "  iso          - Create both BIOS and UEFI ISO images"
-	@echo "  iso-bios     - Create a BIOS-only ISO image"
-	@echo "  iso-uefi     - Create a UEFI-only ISO image"
-	@echo "  img          - Create a raw disk image"
-	@echo "  run-iso      - Show how to run the BIOS ISO in QEMU"
-	@echo "  run-iso-uefi - Show how to run the UEFI ISO in QEMU"
-	@echo "  run-img      - Show how to run IMG in QEMU"
-	@echo "  clean        - Remove build artifacts"
-	@echo "  run          - Show how to run with QEMU direct kernel boot"
-	@echo "  help         - Show this help message"
+	@echo "  all            - Build the kernel (default)"
+	@echo "  build          - Build the kernel"
+	@echo "  iso            - Create hybrid BIOS/UEFI ISO (new default)"
+	@echo "  iso-bios       - Create a BIOS-only ISO image"
+	@echo "  iso-uefi       - Create a UEFI-only ISO image"
+	@echo "  iso-hybrid     - Create a hybrid BIOS/UEFI ISO with x86/x64 kernels"
+	@echo "  img            - Create a raw disk image"
+	@echo "  run-iso        - Show how to run the BIOS ISO in QEMU"
+	@echo "  run-iso-uefi   - Show how to run the UEFI ISO in QEMU"
+	@echo "  run-iso-hybrid - Show how to run the hybrid ISO in QEMU"
+	@echo "  run-img        - Show how to run IMG in QEMU"
+	@echo "  clean          - Remove build artifacts"
+	@echo "  run            - Show how to run with QEMU direct kernel boot"
+	@echo "  help           - Show this help message"
 

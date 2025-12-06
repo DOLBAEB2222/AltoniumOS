@@ -3,7 +3,7 @@
 #include <efiprot.h>
 
 #define ALTONIUM_GRUB_PATH   L"EFI\\ALTONIUM\\GRUBX64.EFI"
-#define ALTONIUM_KERNEL_PATH L"boot\\kernel.elf"
+#define ALTONIUM_KERNEL_PATH L"boot\\x86\\kernel.elf"
 
 static const CHAR16 *status_string(EFI_STATUS status) {
     switch (status) {
