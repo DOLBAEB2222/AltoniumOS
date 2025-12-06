@@ -38,5 +38,6 @@ enum {
 void kernel_main(void);
 void detect_boot_mode(void);
 const char *get_boot_mode_name(void);
+int get_current_boot_mode(void);
 
 #endif

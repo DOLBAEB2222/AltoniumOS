@@ -1,10 +1,17 @@
 #include "../../include/drivers/keyboard.h"
 #include "../../include/shell/prompt.h"
 #include "../../include/shell/nano.h"
+#include "../../include/kernel/hw_detect.h"
+#include "../../include/drivers/console.h"
 
 static keyboard_state_t global_keyboard_state = {0, 0};
 
 void keyboard_init(keyboard_state_t *state) {
+    /* Check if PS/2 controller is available */
+    if (!hw_has_ps2_controller()) {
+        console_print("Warning: No PS/2 controller detected, keyboard may not work\n");
+    }
+    
     if (state) {
         state->ctrl_pressed = 0;
         state->extended_scancode_pending = 0;
