@@ -1,0 +1,617 @@
+#include "../include/shell/commands.h"
+#include "../include/shell/nano.h"
+#include "../include/drivers/console.h"
+#include "../disk.h"
+#include "../fat12.h"
+
+extern void halt_cpu(void);
+extern const char *get_boot_mode_name(void);
+
+static int fat_ready = 0;
+static uint8_t fs_io_buffer[FS_IO_BUFFER_SIZE];
+
+static const char *os_name = "AltoniumOS";
+static const char *os_version = "1.0.0";
+static const char *os_arch = "x86";
+static const char *build_date = __DATE__;
+static const char *build_time = __TIME__;
+
+void commands_init(void) {
+    fat_ready = 0;
+}
+
+int commands_is_fat_ready(void) {
+    return fat_ready;
+}
+
+void commands_set_fat_ready(int ready) {
+    fat_ready = ready;
+}
+
+uint8_t *commands_get_io_buffer(void) {
+    return fs_io_buffer;
+}
+
+const char *fat12_error_string(int code) {
+    switch (code) {
+        case FAT12_OK: return "ok";
+        case FAT12_ERR_IO: return "io";
+        case FAT12_ERR_BAD_BPB: return "bad bpb";
+        case FAT12_ERR_NOT_FAT12: return "not fat12";
+        case FAT12_ERR_OUT_OF_RANGE: return "range";
+        case FAT12_ERR_NO_FREE_CLUSTER: return "disk full";
+        case FAT12_ERR_INVALID_NAME: return "name";
+        case FAT12_ERR_NOT_FOUND: return "not found";
+        case FAT12_ERR_NOT_DIRECTORY: return "not dir";
+        case FAT12_ERR_ALREADY_EXISTS: return "exists";
+        case FAT12_ERR_DIR_FULL: return "dir full";
+        case FAT12_ERR_BUFFER_SMALL: return "buffer";
+        case FAT12_ERR_NOT_FILE: return "not file";
+        case FAT12_ERR_NOT_INITIALIZED: return "fs offline";
+        default: return "unknown";
+    }
+}
+
+void print_fs_error(int code) {
+    console_print(" (");
+    console_print(fat12_error_string(code));
+    console_print(" code ");
+    print_decimal(code);
+    console_print(")");
+}
+
+typedef struct {
+    int count;
+} ls_context_t;
+
+static int ls_callback(const fat12_dir_entry_info_t *entry, void *context) {
+    ls_context_t *ctx = (ls_context_t *)context;
+    ctx->count++;
+    if (entry->attr & FAT12_ATTR_DIRECTORY) {
+        console_print("[DIR] ");
+    } else {
+        console_print("      ");
+    }
+    console_print(entry->name);
+    if ((entry->attr & FAT12_ATTR_DIRECTORY) == 0) {
+        console_print(" (");
+        print_unsigned(entry->size);
+        console_print(" bytes)");
+    }
+    console_print("\n");
+    return 0;
+}
+
+void handle_clear(void) {
+    vga_clear();
+}
+
+void handle_echo(const char *args) {
+    if (args && *args) {
+        console_print(args);
+    }
+    console_print("\n");
+}
+
+void handle_fetch(void) {
+    console_print("OS: ");
+    console_print(os_name);
+    console_print("\n");
+    
+    console_print("Version: ");
+    console_print(os_version);
+    console_print("\n");
+    
+    console_print("Architecture: ");
+    console_print(os_arch);
+    console_print("\n");
+    
+    console_print("Build Date: ");
+    console_print(build_date);
+    console_print("\n");
+    
+    console_print("Build Time: ");
+    console_print(build_time);
+    console_print("\n");
+
+    console_print("Boot Mode: ");
+    console_print(get_boot_mode_name());
+    console_print("\n");
+}
+
+void handle_help(void) {
+    console_print("Available commands:\n");
+    console_print("  clear          - Clear the screen\n");
+    console_print("  echo TEXT      - Print text to the screen\n");
+    console_print("  fetch          - Print OS and system information\n");
+    console_print("  disk           - Test disk I/O and show disk information\n");
+    console_print("  ls [PATH]      - List files in the current or given directory\n");
+    console_print("  dir [PATH]     - Alias for ls\n");
+    console_print("  pwd            - Show current directory\n");
+    console_print("  cd PATH        - Change directory\n");
+    console_print("  cat FILE       - Print file contents\n");
+    console_print("  touch FILE     - Create a zero-length file\n");
+    console_print("  write FILE TXT - Create/overwrite a text file\n");
+    console_print("  mkdir NAME     - Create a directory\n");
+    console_print("  rm FILE        - Delete a file\n");
+    console_print("  nano FILE      - Text editor (Ctrl+S/Ctrl+X/Ctrl+T/Ctrl+H)\n");
+    console_print("  theme [OPTION] - Switch theme (normal/blue/green) or 'list'\n");
+    console_print("  shutdown       - Shut down the system\n");
+    console_print("  help           - Display this help message\n");
+}
+
+void handle_shutdown(void) {
+    console_print("Attempting system shutdown...\n");
+    if (fat_ready) {
+        fat12_flush();
+    }
+    console_print("Halting CPU...\n");
+    halt_cpu();
+}
+
+void handle_disk(void) {
+    console_print("Disk Information:\n");
+    
+    int result = disk_init();
+    if (result != 0) {
+        console_print("  Disk initialization FAILED (error ");
+        if (result < 0) {
+            console_print("-");
+            result = -result;
+        }
+        char error_str[16];
+        int pos = 0;
+        if (result == 0) {
+            error_str[pos++] = '0';
+        } else {
+            char temp[16];
+            int temp_pos = 0;
+            while (result > 0) {
+                temp[temp_pos++] = '0' + (result % 10);
+                result /= 10;
+            }
+            for (int i = temp_pos - 1; i >= 0; i--) {
+                error_str[pos++] = temp[i];
+            }
+        }
+        error_str[pos] = '\0';
+        console_print(error_str);
+        console_print(")\n");
+        return;
+    }
+    
+    console_print("  Disk initialization: OK\n");
+    
+    uint8_t buffer[512];
+    result = disk_read_sector(0, buffer);
+    if (result != 0) {
+        console_print("  Sector 0 read: FAILED (error ");
+        if (result < 0) {
+            console_print("-");
+            result = -result;
+        }
+        char error_str[16];
+        int pos = 0;
+        if (result == 0) {
+            error_str[pos++] = '0';
+        } else {
+            char temp[16];
+            int temp_pos = 0;
+            while (result > 0) {
+                temp[temp_pos++] = '0' + (result % 10);
+                result /= 10;
+            }
+            for (int i = temp_pos - 1; i >= 0; i--) {
+                error_str[pos++] = temp[i];
+            }
+        }
+        error_str[pos] = '\0';
+        console_print(error_str);
+        console_print(")\n");
+        return;
+    }
+    
+    console_print("  Sector 0 read: OK\n");
+    
+    console_print("  First 64 bytes of sector 0:\n");
+    for (int i = 0; i < 64; i++) {
+        if (i % 16 == 0) {
+            console_print("    ");
+        }
+        
+        uint8_t byte = buffer[i];
+        char hex_chars[] = "0123456789ABCDEF";
+        char hex_byte[3];
+        hex_byte[0] = hex_chars[(byte >> 4) & 0xF];
+        hex_byte[1] = hex_chars[byte & 0xF];
+        hex_byte[2] = '\0';
+        console_print(" ");
+        console_print(hex_byte);
+        
+        if (i % 16 == 15) {
+            console_print("\n");
+        }
+    }
+    if (64 % 16 != 0) {
+        console_print("\n");
+    }
+    
+    console_print("  Disk self-test: ");
+    result = disk_self_test();
+    if (result != 0) {
+        console_print("FAILED (error ");
+        if (result < 0) {
+            console_print("-");
+            result = -result;
+        }
+        char error_str[16];
+        int pos = 0;
+        if (result == 0) {
+            error_str[pos++] = '0';
+        } else {
+            char temp[16];
+            int temp_pos = 0;
+            while (result > 0) {
+                temp[temp_pos++] = '0' + (result % 10);
+                result /= 10;
+            }
+            for (int i = temp_pos - 1; i >= 0; i--) {
+                error_str[pos++] = temp[i];
+            }
+        }
+        error_str[pos] = '\0';
+        console_print(error_str);
+        console_print(")\n");
+    } else {
+        console_print("OK\n");
+    }
+}
+
+void handle_ls(const char *args) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    const char *path = skip_whitespace(args);
+    char path_buf[FAT12_PATH_MAX];
+    int path_len = 0;
+    if (path && *path) {
+        path_len = copy_path_argument(path, path_buf, sizeof(path_buf));
+        if (path_len < 0) {
+            console_print("ls failed (path too long)\n");
+            return;
+        }
+    }
+    ls_context_t ctx;
+    ctx.count = 0;
+    int result;
+    if (path_len > 0) {
+        result = fat12_iterate_path(path_buf, ls_callback, &ctx);
+    } else {
+        result = fat12_iterate_current_directory(ls_callback, &ctx);
+    }
+    if (result != FAT12_OK) {
+        console_print("ls failed");
+        print_fs_error(result);
+        console_print("\n");
+        return;
+    }
+    if (ctx.count == 0) {
+        console_print("(empty)\n");
+    }
+}
+
+void handle_pwd(void) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    console_print(fat12_get_cwd());
+    console_print("\n");
+}
+
+void handle_cd(const char *args) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    const char *path = skip_whitespace(args);
+    char path_buf[FAT12_PATH_MAX];
+    int path_len = 0;
+    if (path && *path) {
+        path_len = copy_path_argument(path, path_buf, sizeof(path_buf));
+        if (path_len < 0) {
+            console_print("cd failed (path too long)\n");
+            return;
+        }
+    }
+    if (path_len == 0) {
+        path_buf[0] = '/';
+        path_buf[1] = '\0';
+    }
+    int result = fat12_change_directory(path_buf);
+    if (result != FAT12_OK) {
+        console_print("cd failed");
+        print_fs_error(result);
+        console_print("\n");
+        return;
+    }
+    console_print(fat12_get_cwd());
+    console_print("\n");
+}
+
+void handle_cat(const char *args) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    const char *path = skip_whitespace(args);
+    char path_buf[FAT12_PATH_MAX];
+    int path_len = copy_path_argument(path, path_buf, sizeof(path_buf));
+    if (path_len < 0) {
+        console_print("cat failed (path too long)\n");
+        return;
+    }
+    if (path_len == 0) {
+        console_print("Usage: cat FILE\n");
+        return;
+    }
+    uint32_t size = 0;
+    int result = fat12_read_file(path_buf, fs_io_buffer, FS_IO_BUFFER_SIZE - 1, &size);
+    if (result != FAT12_OK) {
+        console_print("cat failed");
+        print_fs_error(result);
+        console_print("\n");
+        return;
+    }
+    for (uint32_t i = 0; i < size; i++) {
+        console_putchar((char)fs_io_buffer[i]);
+    }
+    if (size == 0 || fs_io_buffer[size - 1] != '\n') {
+        console_print("\n");
+    }
+}
+
+void handle_touch(const char *args) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    const char *cursor = args;
+    char name_buf[FAT12_PATH_MAX];
+    if (read_token(&cursor, name_buf, sizeof(name_buf)) == 0) {
+        console_print("Usage: touch NAME\n");
+        return;
+    }
+    int result = fat12_write_file(name_buf, 0, 0);
+    if (result != FAT12_OK) {
+        console_print("touch failed");
+        print_fs_error(result);
+        console_print("\n");
+        return;
+    }
+    console_print("Created empty file: ");
+    console_print(name_buf);
+    console_print("\n");
+}
+
+void handle_write_command(const char *args) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    const char *cursor = args;
+    char name_buf[FAT12_PATH_MAX];
+    if (read_token(&cursor, name_buf, sizeof(name_buf)) == 0) {
+        console_print("Usage: write NAME TEXT\n");
+        return;
+    }
+    const char *payload = skip_whitespace(cursor);
+    uint32_t length = 0;
+    if (payload) {
+        while (payload[length] != '\0') {
+            if (length >= FS_IO_BUFFER_SIZE) {
+                console_print("write failed (data too large)\n");
+                return;
+            }
+            fs_io_buffer[length] = (uint8_t)payload[length];
+            length++;
+        }
+    }
+    int result = fat12_write_file(name_buf, fs_io_buffer, length);
+    if (result != FAT12_OK) {
+        console_print("write failed");
+        print_fs_error(result);
+        console_print("\n");
+        return;
+    }
+    console_print("Wrote ");
+    print_unsigned(length);
+    console_print(" bytes\n");
+}
+
+void handle_mkdir_command(const char *args) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    const char *cursor = args;
+    char name_buf[FAT12_PATH_MAX];
+    if (read_token(&cursor, name_buf, sizeof(name_buf)) == 0) {
+        console_print("Usage: mkdir NAME\n");
+        return;
+    }
+    int result = fat12_create_directory(name_buf);
+    if (result != FAT12_OK) {
+        console_print("mkdir failed");
+        print_fs_error(result);
+        console_print("\n");
+        return;
+    }
+    console_print("Directory created\n");
+}
+
+void handle_rm_command(const char *args) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    const char *cursor = args;
+    char name_buf[FAT12_PATH_MAX];
+    if (read_token(&cursor, name_buf, sizeof(name_buf)) == 0) {
+        console_print("Usage: rm NAME\n");
+        return;
+    }
+    int result = fat12_delete_file(name_buf);
+    if (result != FAT12_OK) {
+        console_print("rm failed");
+        print_fs_error(result);
+        console_print("\n");
+        return;
+    }
+    console_print("File deleted\n");
+}
+
+void handle_nano_command(const char *args) {
+    if (!fat_ready) {
+        console_print("Filesystem not initialized\n");
+        return;
+    }
+    
+    const char *cursor = args;
+    char filename_buf[FAT12_PATH_MAX];
+    if (read_token(&cursor, filename_buf, sizeof(filename_buf)) == 0) {
+        console_print("Usage: nano FILENAME\n");
+        return;
+    }
+    
+    nano_init_editor(filename_buf);
+}
+
+void handle_theme_command(const char *args) {
+    const char *cursor = args;
+    char option_buf[32];
+    const theme_t *themes = console_get_themes();
+    
+    if (read_token(&cursor, option_buf, sizeof(option_buf)) == 0) {
+        console_print("Current theme: ");
+        console_print(themes[console_get_theme()].name);
+        console_print("\nUsage: theme [normal|blue|green|list]\n");
+        return;
+    }
+    
+    if (strcmp_impl(option_buf, "list") == 0) {
+        console_print("Available themes:\n");
+        for (int i = 0; i < THEME_COUNT; i++) {
+            console_print("  ");
+            console_print(themes[i].name);
+            if (i == console_get_theme()) {
+                console_print(" (current)");
+            }
+            console_print("\n");
+        }
+        return;
+    }
+    
+    int found = -1;
+    for (int i = 0; i < THEME_COUNT; i++) {
+        if (strcmp_impl(option_buf, themes[i].name) == 0) {
+            found = i;
+            break;
+        }
+    }
+    
+    if (found == -1) {
+        console_print("Unknown theme: ");
+        console_print(option_buf);
+        console_print("\nAvailable: normal, blue, green\n");
+        return;
+    }
+    
+    console_set_theme(found);
+    console_print("Theme changed to: ");
+    console_print(themes[console_get_theme()].name);
+    console_print("\n");
+    
+    vga_clear();
+    console_print("Theme applied: ");
+    console_print(themes[console_get_theme()].name);
+    console_print("\n\n");
+}
+
+void execute_command(const char *cmd_line) {
+    if (!cmd_line || *cmd_line == '\0') {
+        return;
+    }
+
+    while (*cmd_line && (*cmd_line == ' ' || *cmd_line == '\t')) {
+        cmd_line++;
+    }
+
+    if (strncmp_impl(cmd_line, "clear", 5) == 0 && 
+        (cmd_line[5] == '\0' || cmd_line[5] == ' ' || cmd_line[5] == '\n')) {
+        handle_clear();
+    } else if (strncmp_impl(cmd_line, "echo ", 5) == 0) {
+        const char *args = cmd_line + 5;
+        handle_echo(args);
+    } else if (strncmp_impl(cmd_line, "fetch", 5) == 0 && 
+               (cmd_line[5] == '\0' || cmd_line[5] == ' ' || cmd_line[5] == '\n')) {
+        handle_fetch();
+    } else if (strncmp_impl(cmd_line, "disk", 4) == 0 && 
+               (cmd_line[4] == '\0' || cmd_line[4] == ' ' || cmd_line[4] == '\n')) {
+        handle_disk();
+    } else if (strncmp_impl(cmd_line, "ls", 2) == 0 &&
+               (cmd_line[2] == '\0' || cmd_line[2] == ' ' || cmd_line[2] == '\n')) {
+        const char *args = cmd_line + 2;
+        handle_ls(args);
+    } else if (strncmp_impl(cmd_line, "dir", 3) == 0 &&
+               (cmd_line[3] == '\0' || cmd_line[3] == ' ' || cmd_line[3] == '\n')) {
+        const char *args = cmd_line + 3;
+        handle_ls(args);
+    } else if (strncmp_impl(cmd_line, "pwd", 3) == 0 &&
+               (cmd_line[3] == '\0' || cmd_line[3] == ' ' || cmd_line[3] == '\n')) {
+        handle_pwd();
+    } else if (strncmp_impl(cmd_line, "cd", 2) == 0 &&
+               (cmd_line[2] == '\0' || cmd_line[2] == ' ' || cmd_line[2] == '\n')) {
+        const char *args = cmd_line + 2;
+        handle_cd(args);
+    } else if (strncmp_impl(cmd_line, "cat", 3) == 0 &&
+               (cmd_line[3] == '\0' || cmd_line[3] == ' ' || cmd_line[3] == '\n')) {
+        const char *args = cmd_line + 3;
+        handle_cat(args);
+    } else if (strncmp_impl(cmd_line, "touch", 5) == 0 &&
+               (cmd_line[5] == '\0' || cmd_line[5] == ' ' || cmd_line[5] == '\n')) {
+        const char *args = cmd_line + 5;
+        handle_touch(args);
+    } else if (strncmp_impl(cmd_line, "write", 5) == 0 &&
+               (cmd_line[5] == '\0' || cmd_line[5] == ' ' || cmd_line[5] == '\n')) {
+        const char *args = cmd_line + 5;
+        handle_write_command(args);
+    } else if (strncmp_impl(cmd_line, "mkdir", 5) == 0 &&
+               (cmd_line[5] == '\0' || cmd_line[5] == ' ' || cmd_line[5] == '\n')) {
+        const char *args = cmd_line + 5;
+        handle_mkdir_command(args);
+    } else if (strncmp_impl(cmd_line, "rm", 2) == 0 &&
+               (cmd_line[2] == '\0' || cmd_line[2] == ' ' || cmd_line[2] == '\n')) {
+        const char *args = cmd_line + 2;
+        handle_rm_command(args);
+    } else if (strncmp_impl(cmd_line, "nano", 4) == 0 &&
+               (cmd_line[4] == '\0' || cmd_line[4] == ' ' || cmd_line[4] == '\n')) {
+        const char *args = cmd_line + 4;
+        handle_nano_command(args);
+    } else if (strncmp_impl(cmd_line, "theme", 5) == 0 &&
+               (cmd_line[5] == '\0' || cmd_line[5] == ' ' || cmd_line[5] == '\n')) {
+        const char *args = cmd_line + 5;
+        handle_theme_command(args);
+    } else if (strncmp_impl(cmd_line, "shutdown", 8) == 0 && 
+               (cmd_line[8] == '\0' || cmd_line[8] == ' ' || cmd_line[8] == '\n')) {
+        handle_shutdown();
+    } else if (strncmp_impl(cmd_line, "help", 4) == 0 && 
+               (cmd_line[4] == '\0' || cmd_line[4] == ' ' || cmd_line[4] == '\n')) {
+        handle_help();
+    } else {
+        console_print("Unknown command: ");
+        console_print(cmd_line);
+        console_print("\n");
+    }
+}
