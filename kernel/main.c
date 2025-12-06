@@ -1,4 +1,5 @@
 #include "../include/kernel/main.h"
+#include "../include/kernel/bootlog.h"
 #include "../include/drivers/console.h"
 #include "../include/drivers/keyboard.h"
 #include "../include/shell/prompt.h"
@@ -39,6 +40,7 @@ const char *get_boot_mode_name(void) {
 
 void kernel_main(void) {
     detect_boot_mode();
+    bootlog_init();
     vga_clear();
     console_print("Welcome to AltoniumOS 1.0.0\n");
 

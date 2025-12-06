@@ -94,7 +94,7 @@ def create_allocator(fat: bytearray):
     return allocate
 
 
-def build_image(boot_path: str, kernel_path: str, output_path: str) -> None:
+def build_image(boot_path: str, kernel_path: str, output_path: str, stage2_path: str = None) -> None:
     total_bytes = TOTAL_SECTORS * BYTES_PER_SECTOR
     image = bytearray(total_bytes)
 
@@ -104,12 +104,23 @@ def build_image(boot_path: str, kernel_path: str, output_path: str) -> None:
         raise RuntimeError("boot sector must be exactly 512 bytes")
     image[0:BYTES_PER_SECTOR] = boot_sector
 
+    # Place stage 2 at sector 1 (offset BYTES_PER_SECTOR)
+    if stage2_path:
+        with open(stage2_path, 'rb') as stage2_file:
+            stage2_data = stage2_file.read()
+        if len(stage2_data) > BYTES_PER_SECTOR:
+            raise RuntimeError("stage2 must be exactly 512 bytes or less")
+        image[BYTES_PER_SECTOR:BYTES_PER_SECTOR + len(stage2_data)] = stage2_data
+
+    # Place kernel at sector 2 (offset 2*BYTES_PER_SECTOR)
     with open(kernel_path, 'rb') as kernel_file:
         kernel_data = kernel_file.read()
     kernel_sectors = (len(kernel_data) + BYTES_PER_SECTOR - 1) // BYTES_PER_SECTOR
-    if kernel_sectors > RESERVED_SECTORS - 1:
+    kernel_start_sector = 2 if stage2_path else 1
+    if kernel_sectors > RESERVED_SECTORS - kernel_start_sector:
         raise RuntimeError("kernel is too large for reserved area")
-    image[BYTES_PER_SECTOR:BYTES_PER_SECTOR + len(kernel_data)] = kernel_data
+    kernel_offset = kernel_start_sector * BYTES_PER_SECTOR
+    image[kernel_offset:kernel_offset + len(kernel_data)] = kernel_data
 
     fat_primary = bytearray(SECTORS_PER_FAT * BYTES_PER_SECTOR)
     fat_primary[0] = MEDIA_DESCRIPTOR
@@ -172,11 +183,12 @@ def build_image(boot_path: str, kernel_path: str, output_path: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build FAT12 disk image")
     parser.add_argument('--boot', required=True, help='Path to boot sector binary')
+    parser.add_argument('--stage2', required=False, help='Path to stage2 bootloader binary')
     parser.add_argument('--kernel', required=True, help='Path to kernel binary')
     parser.add_argument('--output', required=True, help='Output disk image path')
     args = parser.parse_args()
 
-    build_image(args.boot, args.kernel, args.output)
+    build_image(args.boot, args.kernel, args.output, args.stage2)
     print(f"FAT12 image written to {args.output}")
 
 
