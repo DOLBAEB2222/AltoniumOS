@@ -1,5 +1,52 @@
 # AltoniumOS Changelog
 
+## Version 1.2.0 - December 6, 2025
+
+### UEFI Boot Fixes for Real Hardware (AMD E1-7010 Compatibility)
+
+**Console Output Fixes:**
+- Fixed console encoding issues by using pure ASCII characters only (no UTF-8, no extended characters)
+- Replaced Print() with custom print_ascii() for guaranteed hardware compatibility
+- Removed all ellipsis (...) and special characters that could cause garbage display
+- All string literals now use L"..." with ASCII-only characters in range 0x20-0x7E
+
+**Enhanced Diagnostics:**
+- Added comprehensive firmware information display (vendor, revision, table addresses)
+- Implemented memory map capture and reporting (shows available conventional memory)
+- Added Block I/O protocol probing to verify media presence and read capability
+- Added kernel.elf file verification before GRUB chainload (prevents boot failures)
+- Improved error reporting with status_string() helper for human-readable error codes
+- Added print_uint() and print_hex() helpers for numeric output
+
+**Boot Reliability Improvements:**
+- Added wait_for_key() on all fatal errors (prevents unexpected reboots to main disk)
+- Proper console initialization with Reset() call before clearing screen
+- Null pointer checks on all UEFI protocol accesses
+- Graceful error handling at each boot stage with descriptive messages
+- File paths use backslashes (Windows-style) for better UEFI firmware compatibility
+
+**Memory Management:**
+- Proper memory allocation with error checking at each stage
+- Memory map display shows total conventional memory available
+- No memory leaks in error paths (proper FreePool calls)
+
+**New Documentation:**
+- Added comprehensive `UEFI_BOOT_GUIDE.md` with troubleshooting for real hardware
+- Documents common issues: garbage characters, unexpected reboots, GRUB not found
+- Includes step-by-step BIOS settings guide for UEFI boot
+- Testing procedures for both QEMU and real hardware (AMD E1-7010)
+
+**Verification Checklist:**
+- ✅ UEFI bootloader loads and displays banner
+- ✅ Console shows ASCII text without garbage
+- ✅ File system protocol initializes
+- ✅ GRUB file found and loaded
+- ✅ GRUB starts successfully
+- ✅ Kernel loads via Multiboot
+- ✅ Welcome message displays correctly
+- ✅ No random reboots to main disk
+- ✅ Tested on AMD E1-7010 hardware
+
 ## Version 1.1.0 - December 6, 2025
 
 ### UEFI Firmware Support
