@@ -1,5 +1,13 @@
 #include "disk.h"
 
+/* Performance counters */
+static uint32_t g_disk_reads = 0;
+static uint32_t g_disk_writes = 0;
+static uint32_t g_disk_multi_reads = 0;
+static uint32_t g_disk_multi_writes = 0;
+static uint32_t g_disk_read_sectors = 0;
+static uint32_t g_disk_write_sectors = 0;
+
 /* I/O Port Functions */
 static inline uint8_t inb(uint16_t port) {
     uint8_t result;
@@ -135,6 +143,8 @@ int disk_read_sector(uint32_t lba, uint8_t *buffer) {
         buffer[i * 2 + 1] = (uint8_t)((data >> 8) & 0xFF);
     }
     
+    g_disk_reads++;
+    g_disk_read_sectors++;
     return 0;  /* Success */
 }
 
@@ -184,7 +194,48 @@ int disk_write_sector(uint32_t lba, const uint8_t *buffer) {
         return -5;
     }
     
+    g_disk_writes++;
+    g_disk_write_sectors++;
     return 0;  /* Success */
+}
+
+/* Read multiple sectors using multi-sector PIO (optimized) */
+static int disk_read_sectors_multi_pio(uint32_t lba, uint8_t *buffer, uint16_t num_sectors) {
+    if (!buffer || num_sectors == 0 || num_sectors > 256) {
+        return -1;
+    }
+    
+    select_drive();
+    
+    if (wait_for_bsy() != 0) {
+        return -2;
+    }
+    
+    outb(ATA_SECCOUNT0_REG, (uint8_t)num_sectors);
+    outb(ATA_LBA0_REG, (uint8_t)(lba & 0xFF));
+    outb(ATA_LBA1_REG, (uint8_t)((lba >> 8) & 0xFF));
+    outb(ATA_LBA2_REG, (uint8_t)((lba >> 16) & 0xFF));
+    outb(ATA_DRIVE_REG, ATA_DRIVE_MASTER | ATA_DRIVE_LBA | ((lba >> 24) & 0x0F));
+    
+    outb(ATA_COMMAND_REG, ATA_CMD_READ_SECTORS_MULTI);
+    
+    for (uint16_t sector = 0; sector < num_sectors; sector++) {
+        if (wait_for_drq() != 0) {
+            return -3;
+        }
+        
+        uint8_t *sector_buffer = buffer + (sector * SECTOR_SIZE);
+        for (int i = 0; i < 256; i++) {
+            uint16_t data = inw(ATA_DATA_REG);
+            sector_buffer[i * 2] = (uint8_t)(data & 0xFF);
+            sector_buffer[i * 2 + 1] = (uint8_t)((data >> 8) & 0xFF);
+        }
+    }
+    
+    g_disk_multi_reads++;
+    g_disk_reads++;
+    g_disk_read_sectors += num_sectors;
+    return 0;
 }
 
 /* Read multiple sectors */
@@ -193,7 +244,13 @@ int disk_read_sectors(uint32_t lba, uint8_t *buffer, uint16_t num_sectors) {
         return -1;
     }
     
-    /* Read sectors one by one (simpler implementation) */
+    if (num_sectors > 1 && num_sectors <= 256) {
+        int result = disk_read_sectors_multi_pio(lba, buffer, num_sectors);
+        if (result == 0) {
+            return 0;
+        }
+    }
+    
     for (uint16_t i = 0; i < num_sectors; i++) {
         int result = disk_read_sector(lba + i, buffer + (i * SECTOR_SIZE));
         if (result != 0) {
@@ -201,7 +258,54 @@ int disk_read_sectors(uint32_t lba, uint8_t *buffer, uint16_t num_sectors) {
         }
     }
     
-    return 0;  /* Success */
+    return 0;
+}
+
+/* Write multiple sectors using multi-sector PIO (optimized) */
+static int disk_write_sectors_multi_pio(uint32_t lba, const uint8_t *buffer, uint16_t num_sectors) {
+    if (!buffer || num_sectors == 0 || num_sectors > 256) {
+        return -1;
+    }
+    
+    select_drive();
+    
+    if (wait_for_bsy() != 0) {
+        return -2;
+    }
+    
+    outb(ATA_SECCOUNT0_REG, (uint8_t)num_sectors);
+    outb(ATA_LBA0_REG, (uint8_t)(lba & 0xFF));
+    outb(ATA_LBA1_REG, (uint8_t)((lba >> 8) & 0xFF));
+    outb(ATA_LBA2_REG, (uint8_t)((lba >> 16) & 0xFF));
+    outb(ATA_DRIVE_REG, ATA_DRIVE_MASTER | ATA_DRIVE_LBA | ((lba >> 24) & 0x0F));
+    
+    outb(ATA_COMMAND_REG, ATA_CMD_WRITE_SECTORS_MULTI);
+    
+    for (uint16_t sector = 0; sector < num_sectors; sector++) {
+        if (wait_for_drq() != 0) {
+            return -3;
+        }
+        
+        const uint8_t *sector_buffer = buffer + (sector * SECTOR_SIZE);
+        for (int i = 0; i < 256; i++) {
+            uint16_t data = (uint16_t)sector_buffer[i * 2] | ((uint16_t)sector_buffer[i * 2 + 1] << 8);
+            outw(ATA_DATA_REG, data);
+        }
+    }
+    
+    if (wait_for_bsy() != 0) {
+        return -4;
+    }
+    
+    uint8_t status = inb(ATA_STATUS_REG);
+    if (status & ATA_STATUS_ERR) {
+        return -5;
+    }
+    
+    g_disk_multi_writes++;
+    g_disk_writes++;
+    g_disk_write_sectors += num_sectors;
+    return 0;
 }
 
 /* Write multiple sectors */
@@ -210,7 +314,13 @@ int disk_write_sectors(uint32_t lba, const uint8_t *buffer, uint16_t num_sectors
         return -1;
     }
     
-    /* Write sectors one by one (simpler implementation) */
+    if (num_sectors > 1 && num_sectors <= 256) {
+        int result = disk_write_sectors_multi_pio(lba, buffer, num_sectors);
+        if (result == 0) {
+            return 0;
+        }
+    }
+    
     for (uint16_t i = 0; i < num_sectors; i++) {
         int result = disk_write_sector(lba + i, buffer + (i * SECTOR_SIZE));
         if (result != 0) {
@@ -218,7 +328,7 @@ int disk_write_sectors(uint32_t lba, const uint8_t *buffer, uint16_t num_sectors
         }
     }
     
-    return 0;  /* Success */
+    return 0;
 }
 
 /* Simple self-test: read LBA 0 and validate it looks like a boot sector */
@@ -250,4 +360,26 @@ int disk_self_test(void) {
     }
     
     return -1;  /* Failure - sector appears empty */
+}
+
+/* Get disk I/O statistics */
+void disk_get_stats(disk_stats_t *stats) {
+    if (stats) {
+        stats->read_ops = g_disk_reads;
+        stats->write_ops = g_disk_writes;
+        stats->read_multi_ops = g_disk_multi_reads;
+        stats->write_multi_ops = g_disk_multi_writes;
+        stats->read_sectors = g_disk_read_sectors;
+        stats->write_sectors = g_disk_write_sectors;
+    }
+}
+
+/* Reset disk I/O statistics */
+void disk_reset_stats(void) {
+    g_disk_reads = 0;
+    g_disk_writes = 0;
+    g_disk_multi_reads = 0;
+    g_disk_multi_writes = 0;
+    g_disk_read_sectors = 0;
+    g_disk_write_sectors = 0;
 }
