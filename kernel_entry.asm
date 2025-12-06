@@ -19,8 +19,14 @@ extern kernel_main
 
 global _start
 global halt_cpu
+global multiboot_magic_storage
+global multiboot_info_ptr_storage
 
 _start:
+    ; Preserve Multiboot registers for the kernel
+    mov [multiboot_magic_storage], eax
+    mov [multiboot_info_ptr_storage], ebx
+
     ; Set up stack (place it at 8MB for safety)
     mov esp, 0x800000
     
@@ -36,6 +42,13 @@ halt_cpu:
     cli
     hlt
     jmp halt_cpu
+
+section .bss
+align 4
+multiboot_magic_storage:
+    dd 0
+multiboot_info_ptr_storage:
+    dd 0
 
 ; Mark stack as non-executable (fixes linker warning)
 section .note.GNU-stack noalloc noexec nowrite progbits

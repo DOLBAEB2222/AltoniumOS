@@ -5,6 +5,8 @@
 ### Quick Build & Test
 ```bash
 make build          # Build kernel
+make iso-bios       # Create the legacy BIOS ISO image
+make iso-uefi       # Create the UEFI ISO image
 make img            # Create the FAT12 disk image (make bootable is an alias)
 ./test_boot.sh      # Run automated tests
 ```
@@ -24,6 +26,17 @@ qemu-system-i386 -kernel dist/kernel.elf -drive format=raw,file=dist/os.img,if=i
 qemu-system-i386 -drive file=dist/os.img,format=raw
 ```
 
+### Run UEFI ISO in QEMU
+```bash
+qemu-system-x86_64 -bios /usr/share/OVMF/OVMF_CODE_4M.fd -cdrom dist/os-uefi.iso
+```
+
+### Test on Real Hardware
+```bash
+sudo dd if=dist/os-uefi.iso of=/dev/sdX bs=4M status=progress conv=fsync
+# Select the USB drive's UEFI boot option (e.g., on AMD E1-7010 laptops)
+```
+
 ### Clean Build
 ```bash
 make clean && make build
@@ -34,6 +47,7 @@ make clean && make build
 When AltoniumOS boots, you'll see:
 ```
 Welcome to AltoniumOS 1.0.0
+Boot mode: BIOS
 Initializing disk driver... OK
 Running disk self-test... OK
 Initializing FAT12 filesystem... OK
