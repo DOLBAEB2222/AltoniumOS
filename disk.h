@@ -24,7 +24,9 @@ typedef unsigned int uint32_t;
 
 /* ATA Commands */
 #define ATA_CMD_READ_SECTORS        0x20
+#define ATA_CMD_READ_SECTORS_MULTI  0xC4
 #define ATA_CMD_WRITE_SECTORS       0x30
+#define ATA_CMD_WRITE_SECTORS_MULTI 0xC5
 #define ATA_CMD_IDENTIFY_DEVICE     0xEC
 
 /* ATA Status Bits */
@@ -45,6 +47,15 @@ typedef unsigned int uint32_t;
 /* Sector size */
 #define SECTOR_SIZE 512
 
+typedef struct {
+    uint32_t read_ops;
+    uint32_t write_ops;
+    uint32_t read_multi_ops;
+    uint32_t write_multi_ops;
+    uint32_t read_sectors;
+    uint32_t write_sectors;
+} disk_stats_t;
+
 /* Function Prototypes */
 int disk_init(void);
 int disk_read_sector(uint32_t lba, uint8_t *buffer);
@@ -52,5 +63,7 @@ int disk_write_sector(uint32_t lba, const uint8_t *buffer);
 int disk_read_sectors(uint32_t lba, uint8_t *buffer, uint16_t num_sectors);
 int disk_write_sectors(uint32_t lba, const uint8_t *buffer, uint16_t num_sectors);
 int disk_self_test(void);
+void disk_get_stats(disk_stats_t *stats);
+void disk_reset_stats(void);
 
 #endif /* DISK_H */

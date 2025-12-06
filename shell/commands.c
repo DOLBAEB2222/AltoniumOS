@@ -136,6 +136,7 @@ void handle_help(void) {
     console_print("  rm FILE        - Delete a file\n");
     console_print("  nano FILE      - Text editor (Ctrl+S/Ctrl+X/Ctrl+T/Ctrl+H)\n");
     console_print("  theme [OPTION] - Switch theme (normal/blue/green) or 'list'\n");
+    console_print("  fsstat         - Show filesystem/disk statistics\n");
     console_print("  shutdown       - Shut down the system\n");
     console_print("  help           - Display this help message\n");
 }
@@ -488,6 +489,45 @@ void handle_nano_command(const char *args) {
     nano_init_editor(filename_buf);
 }
 
+void handle_fsstat_command(void) {
+    disk_stats_t disk_stats;
+    disk_get_stats(&disk_stats);
+    
+    console_print("Disk I/O Statistics:\n");
+    console_print("  Read operations:    ");
+    print_unsigned(disk_stats.read_ops);
+    console_print(" (");
+    print_unsigned(disk_stats.read_sectors);
+    console_print(" sectors)\n");
+    
+    console_print("  Write operations:   ");
+    print_unsigned(disk_stats.write_ops);
+    console_print(" (");
+    print_unsigned(disk_stats.write_sectors);
+    console_print(" sectors)\n");
+    
+    console_print("  Multi-read ops:     ");
+    print_unsigned(disk_stats.read_multi_ops);
+    console_print("\n");
+    
+    console_print("  Multi-write ops:    ");
+    print_unsigned(disk_stats.write_multi_ops);
+    console_print("\n");
+    
+    uint32_t total_ops = disk_stats.read_ops + disk_stats.write_ops;
+    uint32_t multi_ops = disk_stats.read_multi_ops + disk_stats.write_multi_ops;
+    console_print("  Total operations:   ");
+    print_unsigned(total_ops);
+    console_print("\n");
+    
+    if (total_ops > 0) {
+        uint32_t multi_pct = (multi_ops * 100) / total_ops;
+        console_print("  Multi-op ratio:     ");
+        print_unsigned(multi_pct);
+        console_print("%\n");
+    }
+}
+
 void handle_theme_command(const char *args) {
     const char *cursor = args;
     char option_buf[32];
@@ -603,6 +643,9 @@ void execute_command(const char *cmd_line) {
                (cmd_line[5] == '\0' || cmd_line[5] == ' ' || cmd_line[5] == '\n')) {
         const char *args = cmd_line + 5;
         handle_theme_command(args);
+    } else if (strncmp_impl(cmd_line, "fsstat", 6) == 0 &&
+               (cmd_line[6] == '\0' || cmd_line[6] == ' ' || cmd_line[6] == '\n')) {
+        handle_fsstat_command();
     } else if (strncmp_impl(cmd_line, "shutdown", 8) == 0 && 
                (cmd_line[8] == '\0' || cmd_line[8] == ' ' || cmd_line[8] == '\n')) {
         handle_shutdown();

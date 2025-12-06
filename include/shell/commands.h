@@ -26,6 +26,7 @@ void handle_mkdir_command(const char *args);
 void handle_rm_command(const char *args);
 void handle_nano_command(const char *args);
 void handle_theme_command(const char *args);
+void handle_fsstat_command(void);
 
 const char *fat12_error_string(int code);
 void print_fs_error(int code);
