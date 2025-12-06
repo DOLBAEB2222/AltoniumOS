@@ -139,6 +139,14 @@ sudo dd if=dist/os-uefi.iso of=/dev/sdX bs=4M status=progress conv=fsync
 
 On a physical machine, choose the UEFI boot entry that matches your USB stick (for example on AMD E1-7010 laptops). The firmware will display the bootstrap banner, chain-load GRUB, and eventually drop you into the familiar shell once the kernel finishes loading.
 
+**UEFI Hardware Compatibility:**
+- Console output uses pure ASCII characters (no UTF-8 or extended characters) for maximum compatibility
+- Comprehensive diagnostics and memory map reporting
+- Automatic verification of kernel.elf and GRUB presence before boot
+- Detailed error messages with wait-for-key on failures (prevents unexpected reboots)
+- Tested on AMD E1-7010 systems and OVMF firmware
+- See `UEFI_BOOT_GUIDE.md` for detailed troubleshooting information
+
 ### Testing Disk I/O
 
 To test the disk I/O functionality:
