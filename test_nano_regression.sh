@@ -5,7 +5,7 @@ echo "=== Nano Editor Test ==="
 echo
 
 # Check that nano command is implemented
-if grep -q "handle_nano" kernel.c; then
+if grep -q "handle_nano" kernel/main.c; then
     echo "✓ nano command implemented"
 else
     echo "✗ nano command missing"
@@ -13,21 +13,21 @@ else
 fi
 
 # Check for nano editor functions
-if grep -q "nano_init_editor" kernel.c; then
+if grep -q "nano_init_editor" kernel/main.c; then
     echo "✓ nano_init_editor function found"
 else
     echo "✗ nano_init_editor function missing"
     exit 1
 fi
 
-if grep -q "nano_render_editor" kernel.c; then
+if grep -q "nano_render_editor" kernel/main.c; then
     echo "✓ nano_render_editor function found"
 else
     echo "✗ nano_render_editor function missing"
     exit 1
 fi
 
-if grep -q "nano_handle_keyboard" kernel.c; then
+if grep -q "nano_handle_keyboard" kernel/main.c; then
     echo "✓ nano_handle_keyboard function found"
 else
     echo "✗ nano_handle_keyboard function missing"
@@ -35,7 +35,7 @@ else
 fi
 
 # Check for editor state variables
-if grep -q "nano_editor_active" kernel.c; then
+if grep -q "nano_editor_active" kernel/main.c; then
     echo "✓ nano editor state variable found"
 else
     echo "✗ nano editor state variable missing"
@@ -43,7 +43,7 @@ else
 fi
 
 # Check for line buffer
-if grep -q "nano_lines" kernel.c; then
+if grep -q "nano_lines" kernel/main.c; then
     echo "✓ nano line buffer found"
 else
     echo "✗ nano line buffer missing"
@@ -51,7 +51,7 @@ else
 fi
 
 # Check for cursor handling
-if grep -q "nano_cursor_x" kernel.c; then
+if grep -q "nano_cursor_x" kernel/main.c; then
     echo "✓ nano cursor variables found"
 else
     echo "✗ nano cursor variables missing"
@@ -59,14 +59,14 @@ else
 fi
 
 # Check for FAT12 integration
-if grep -q "fat12_read_file" kernel.c; then
+if grep -q "fat12_read_file" kernel/main.c; then
     echo "✓ FAT12 file loading integration found"
 else
     echo "✗ FAT12 file loading integration missing"
     exit 1
 fi
 
-if grep -q "fat12_write_file" kernel.c; then
+if grep -q "fat12_write_file" kernel/main.c; then
     echo "✓ FAT12 file saving integration found"
 else
     echo "✗ FAT12 file saving integration missing"

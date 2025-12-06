@@ -166,13 +166,31 @@ cat TEST.TXT
 
 ## Files
 
-- `boot.asm` - Bootloader + FAT12 BPB (512 bytes)
-- `kernel_entry.asm` - Kernel entry with Multiboot header
-- `kernel.c` - Main kernel code
-- `disk.c` / `disk.h` - ATA PIO disk driver
-- `fat12.c` / `fat12.h` - FAT12 filesystem implementation
-- `scripts/build_fat12_image.py` - Generates the FAT12 disk layout used by `make img`
-- `linker.ld` - Linker script
+### Bootloader Layer
+- `bootloader/bios/boot.asm` - BIOS bootloader (512 bytes)
+- `bootloader/uefi/uefi_loader.c` - UEFI bootloader
+
+### Architecture Layer
+- `arch/x86/kernel_entry.asm` - x86 kernel entry with Multiboot header
+- `arch/x86/linker.ld` - x86 linker script
+
+### Kernel Layer
+- `kernel/main.c` - Main kernel with command handling and console
+
+### Driver Layer
+- `drivers/ata/disk.c` / `drivers/ata/disk.h` - ATA PIO disk driver
+
+### Filesystem Layer
+- `filesystem/fat12/fat12.c` / `filesystem/fat12/fat12.h` - FAT12 filesystem
+
+### Include Layer
+- `include/kernel/types.h` - Common type definitions
+- `include/drivers/disk.h` - Disk driver interface
+- `include/fs/fat12.h` - FAT12 interface
+
+### Build Scripts
+- `scripts/build_fat12_image.py` - Generates the FAT12 disk layout
+- `Makefile` - Build system
 - `test_boot.sh` - Automated tests
 
 ## Documentation

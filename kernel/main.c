@@ -1,11 +1,6 @@
-/* Minimal type definitions - no libc */
-typedef unsigned char uint8_t;
-typedef unsigned short uint16_t;
-typedef unsigned int uint32_t;
-typedef signed int int32_t;
-typedef unsigned long size_t;
-typedef unsigned long uintptr_t;
-typedef int ssize_t;
+#include <kernel/types.h>
+#include <drivers/disk.h>
+#include <fs/fat12.h>
 
 #define VGA_BUFFER ((char *)0xB8000)
 #define VGA_WIDTH 80
@@ -136,10 +131,6 @@ static int string_contains(const char *haystack, const char *needle);
 
 /* External: defined in assembly */
 extern void halt_cpu(void);
-
-/* Include disk driver */
-#include "disk.h"
-#include "fat12.h"
 
 /* Nano editor state */
 #define NANO_MAX_LINES 1000

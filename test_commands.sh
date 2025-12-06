@@ -9,112 +9,112 @@ echo
 # Check that all commands are implemented in the source
 echo "1. Checking command implementations..."
 
-if grep -q "handle_clear" kernel.c; then
+if grep -q "handle_clear" kernel/main.c; then
     echo "   ✓ clear command implemented"
 else
     echo "   ✗ clear command missing"
     exit 1
 fi
 
-if grep -q "handle_echo" kernel.c; then
+if grep -q "handle_echo" kernel/main.c; then
     echo "   ✓ echo command implemented"
 else
     echo "   ✗ echo command missing"
     exit 1
 fi
 
-if grep -q "handle_fetch" kernel.c; then
+if grep -q "handle_fetch" kernel/main.c; then
     echo "   ✓ fetch command implemented"
 else
     echo "   ✗ fetch command missing"
     exit 1
 fi
 
-if grep -q "handle_shutdown" kernel.c; then
+if grep -q "handle_shutdown" kernel/main.c; then
     echo "   ✓ shutdown command implemented"
 else
     echo "   ✗ shutdown command missing"
     exit 1
 fi
 
-if grep -q "handle_help" kernel.c; then
+if grep -q "handle_help" kernel/main.c; then
     echo "   ✓ help command implemented"
 else
     echo "   ✗ help command missing"
     exit 1
 fi
 
-if grep -q "handle_disk" kernel.c; then
+if grep -q "handle_disk" kernel/main.c; then
     echo "   ✓ disk command implemented"
 else
     echo "   ✗ disk command missing"
     exit 1
 fi
 
-if grep -q "handle_ls" kernel.c; then
+if grep -q "handle_ls" kernel/main.c; then
     echo "   ✓ ls command implemented"
 else
     echo "   ✗ ls command missing"
     exit 1
 fi
 
-if grep -q "handle_pwd" kernel.c; then
+if grep -q "handle_pwd" kernel/main.c; then
     echo "   ✓ pwd command implemented"
 else
     echo "   ✗ pwd command missing"
     exit 1
 fi
 
-if grep -q "handle_cd" kernel.c; then
+if grep -q "handle_cd" kernel/main.c; then
     echo "   ✓ cd command implemented"
 else
     echo "   ✗ cd command missing"
     exit 1
 fi
 
-if grep -q "handle_cat" kernel.c; then
+if grep -q "handle_cat" kernel/main.c; then
     echo "   ✓ cat command implemented"
 else
     echo "   ✗ cat command missing"
     exit 1
 fi
 
-if grep -q "handle_touch" kernel.c; then
+if grep -q "handle_touch" kernel/main.c; then
     echo "   ✓ touch command implemented"
 else
     echo "   ✗ touch command missing"
     exit 1
 fi
 
-if grep -q "handle_write_command" kernel.c; then
+if grep -q "handle_write_command" kernel/main.c; then
     echo "   ✓ write command implemented"
 else
     echo "   ✗ write command missing"
     exit 1
 fi
 
-if grep -q "handle_mkdir_command" kernel.c; then
+if grep -q "handle_mkdir_command" kernel/main.c; then
     echo "   ✓ mkdir command implemented"
 else
     echo "   ✗ mkdir command missing"
     exit 1
 fi
 
-if grep -q "handle_rm_command" kernel.c; then
+if grep -q "handle_rm_command" kernel/main.c; then
     echo "   ✓ rm command implemented"
 else
     echo "   ✗ rm command missing"
     exit 1
 fi
 
-if grep -q "handle_nano" kernel.c; then
+if grep -q "handle_nano" kernel/main.c; then
     echo "   ✓ nano command implemented"
 else
     echo "   ✗ nano command missing"
     exit 1
 fi
 
-if grep -q '"dir"' kernel.c; then
+if grep -q '"dir"' kernel/main.c; then
     echo "   ✓ dir alias (for ls) implemented"
 else
     echo "   ✗ dir alias missing"
@@ -123,14 +123,14 @@ fi
 
 echo
 echo "2. Checking VGA console implementation..."
-if grep -q "VGA_BUFFER.*0xB8000" kernel.c; then
+if grep -q "VGA_BUFFER.*0xB8000" kernel/main.c; then
     echo "   ✓ VGA text mode buffer at 0xB8000"
 else
     echo "   ✗ VGA buffer not found"
     exit 1
 fi
 
-if grep -q "keyboard_ready\|read_keyboard" kernel.c; then
+if grep -q "keyboard_ready\|read_keyboard" kernel/main.c; then
     echo "   ✓ Keyboard input handling implemented"
 else
     echo "   ✗ Keyboard input missing"
@@ -152,7 +152,7 @@ else
     exit 1
 fi
 
-if [ -f linker.ld ] && grep -q "ENTRY(_start)" linker.ld; then
+if [ -f arch/x86/linker.ld ] && grep -q "ENTRY(_start)" arch/x86/linker.ld; then
     echo "   ✓ Linker script with proper entry point"
 else
     echo "   ✗ Linker script issues"

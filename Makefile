@@ -5,9 +5,9 @@ CC = gcc
 LD = ld
 
 ASFLAGS = -f elf32
-CFLAGS = -m32 -std=c99 -ffreestanding -fno-stack-protector -Wall -Wextra -nostdlib
-LDFLAGS = -m elf_i386 -T linker.ld
-UEFI_CFLAGS = -fshort-wchar -ffreestanding -fno-stack-protector -fPIC -mno-red-zone -maccumulate-outgoing-args -Wall -Wextra -I/usr/include/efi -I/usr/include/efi/x86_64 -I/usr/include/efi/protocol
+CFLAGS = -m32 -std=c99 -ffreestanding -fno-stack-protector -Wall -Wextra -nostdlib -Iinclude
+LDFLAGS = -m elf_i386 -T arch/x86/linker.ld
+UEFI_CFLAGS = -fshort-wchar -ffreestanding -fno-stack-protector -fPIC -mno-red-zone -maccumulate-outgoing-args -Wall -Wextra -Iinclude -I/usr/include/efi -I/usr/include/efi/x86_64 -I/usr/include/efi/protocol
 UEFI_LDFLAGS = -nostdlib -znocombreloc -shared -Bsymbolic -L/usr/lib -L/usr/lib64 -T /usr/lib/elf_x86_64_efi.lds
 UEFI_LIBS = -lgnuefi -lefi
 
@@ -24,19 +24,19 @@ build: $(DIST_DIR)/kernel.elf $(DIST_DIR)/kernel.bin
 dirs:
 	@mkdir -p $(BUILD_DIR) $(DIST_DIR)
 
-$(BUILD_DIR)/kernel_entry.o: kernel_entry.asm dirs
+$(BUILD_DIR)/kernel_entry.o: arch/x86/kernel_entry.asm dirs
 	$(AS) $(ASFLAGS) -o $@ $<
 
-$(BUILD_DIR)/kernel.o: kernel.c dirs
+$(BUILD_DIR)/kernel.o: kernel/main.c dirs
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD_DIR)/disk.o: disk.c dirs
+$(BUILD_DIR)/disk.o: drivers/ata/disk.c dirs
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD_DIR)/fat12.o: fat12.c dirs
+$(BUILD_DIR)/fat12.o: filesystem/fat12/fat12.c dirs
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD_DIR)/uefi_loader.o: bootloader/uefi_loader.c dirs
+$(BUILD_DIR)/uefi_loader.o: bootloader/uefi/uefi_loader.c dirs
 	$(CC) $(UEFI_CFLAGS) -c -o $@ $<
 
 $(DIST_DIR)/kernel.elf: $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/disk.o $(BUILD_DIR)/fat12.o dirs
@@ -45,7 +45,7 @@ $(DIST_DIR)/kernel.elf: $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUIL
 $(DIST_DIR)/kernel.bin: $(DIST_DIR)/kernel.elf
 	objcopy -O binary $< $@
 
-$(DIST_DIR)/boot.bin: boot.asm dirs
+$(DIST_DIR)/boot.bin: bootloader/bios/boot.asm dirs
 	$(AS) -f bin -o $@ $<
 
 $(DIST_DIR)/EFI/BOOT/BOOTX64.EFI: $(BUILD_DIR)/uefi_loader.o dirs

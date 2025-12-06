@@ -2,6 +2,54 @@
 
 A minimal x86 operating system with console commands for system interaction and information retrieval.
 
+## Project Structure
+
+The project uses a layered architecture to organize code into distinct subsystems:
+
+```
+.
+├── bootloader/               # Bootloader implementations
+│   ├── bios/                # BIOS boot sector
+│   │   └── boot.asm
+│   └── uefi/                # UEFI bootloader
+│       └── uefi_loader.c
+├── arch/x86/                # x86 architecture-specific code
+│   ├── kernel_entry.asm     # 32-bit kernel entry point
+│   └── linker.ld            # Linker script
+├── kernel/                  # Core kernel logic
+│   └── main.c               # Main kernel with command handling
+├── drivers/                 # Hardware device drivers
+│   └── ata/                 # ATA disk driver
+│       ├── disk.c
+│       └── disk.h
+├── filesystem/              # Filesystem implementations
+│   └── fat12/               # FAT12 filesystem
+│       ├── fat12.c
+│       └── fat12.h
+├── shell/                   # Shell and command handling
+│       (integrated into kernel/main.c)
+├── include/                 # Centralized headers
+│   ├── kernel/types.h       # Common type definitions
+│   ├── drivers/disk.h       # Disk driver interface
+│   ├── fs/fat12.h           # Filesystem interface
+│   └── shell/commands.h     # Command interface (reserved)
+├── config/                  # Hardware profiles (reserved)
+├── scripts/                 # Build and utility scripts
+│   └── build_fat12_image.py # FAT12 image generator
+├── Makefile                 # Build system
+└── tests/                   # Test scripts and verification
+
+```
+
+This structure enables clean separation of concerns:
+- **bootloader/** contains different boot implementations (BIOS and UEFI)
+- **arch/** contains architecture-specific code (x86 in this case)
+- **kernel/** contains the core OS logic
+- **drivers/** contains hardware drivers (currently ATA disk driver)
+- **filesystem/** contains filesystem implementations (currently FAT12)
+- **include/** provides a centralized include path for all modules
+- Modules stop duplicating type definitions and use `include/kernel/types.h` instead
+
 ## Features
 
 This OS includes the following console commands:
