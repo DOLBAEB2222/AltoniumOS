@@ -1,4 +1,5 @@
-#include "fat12.h"
+#include "../include/fs/fat12.h"
+#include "../include/fs/vfs.h"
 
 #define FAT12_CLUSTER_FREE 0x000
 #define FAT12_CLUSTER_EOC  0x0FF8
@@ -1193,4 +1194,132 @@ int fat12_flush(void) {
         return res;
     }
     return fat12_flush_fats();
+}
+
+static int fat12_vfs_error_map(int fat12_error) {
+    switch (fat12_error) {
+        case FAT12_OK: return VFS_OK;
+        case FAT12_ERR_IO: return VFS_ERR_IO;
+        case FAT12_ERR_NOT_FOUND: return VFS_ERR_NOT_FOUND;
+        case FAT12_ERR_NOT_DIRECTORY: return VFS_ERR_NOT_DIRECTORY;
+        case FAT12_ERR_NOT_FILE: return VFS_ERR_NOT_FILE;
+        case FAT12_ERR_ALREADY_EXISTS: return VFS_ERR_ALREADY_EXISTS;
+        case FAT12_ERR_INVALID_NAME: return VFS_ERR_INVALID_NAME;
+        case FAT12_ERR_NO_FREE_CLUSTER: return VFS_ERR_NO_SPACE;
+        case FAT12_ERR_DIR_FULL: return VFS_ERR_DIR_FULL;
+        case FAT12_ERR_BUFFER_SMALL: return VFS_ERR_BUFFER_SMALL;
+        case FAT12_ERR_NOT_INITIALIZED: return VFS_ERR_NOT_INITIALIZED;
+        default: return VFS_ERR_IO;
+    }
+}
+
+typedef struct {
+    vfs_dir_iter_cb cb;
+    void *user_context;
+} fat12_vfs_adapter_context_t;
+
+static int fat12_vfs_iterate_adapter(const fat12_dir_entry_info_t *entry, void *context) {
+    fat12_vfs_adapter_context_t *ctx = (fat12_vfs_adapter_context_t *)context;
+    vfs_dir_entry_t vfs_entry;
+    
+    unsigned int i;
+    for (i = 0; i < FAT12_MAX_DISPLAY_NAME && entry->name[i] != '\0'; i++) {
+        vfs_entry.name[i] = entry->name[i];
+    }
+    vfs_entry.name[i] = '\0';
+    vfs_entry.attr = entry->attr;
+    vfs_entry.size = entry->size;
+    vfs_entry.inode = entry->first_cluster;
+    
+    return ctx->cb(&vfs_entry, ctx->user_context);
+}
+
+static int fat12_vfs_mount(uint32_t base_lba) {
+    return fat12_vfs_error_map(fat12_init(base_lba));
+}
+
+static int fat12_vfs_read_file(const char *path, uint8_t *buffer, uint32_t max_size, uint32_t *out_size) {
+    return fat12_vfs_error_map(fat12_read_file(path, buffer, max_size, out_size));
+}
+
+static int fat12_vfs_write_file(const char *name, const uint8_t *data, uint32_t size) {
+    return fat12_vfs_error_map(fat12_write_file(name, data, size));
+}
+
+static int fat12_vfs_create_directory(const char *name) {
+    return fat12_vfs_error_map(fat12_create_directory(name));
+}
+
+static int fat12_vfs_delete_file(const char *name) {
+    return fat12_vfs_error_map(fat12_delete_file(name));
+}
+
+static int fat12_vfs_iterate_current_directory(vfs_dir_iter_cb cb, void *context) {
+    fat12_vfs_adapter_context_t adapter_ctx;
+    adapter_ctx.cb = cb;
+    adapter_ctx.user_context = context;
+    
+    return fat12_vfs_error_map(fat12_iterate_current_directory(fat12_vfs_iterate_adapter, &adapter_ctx));
+}
+
+static int fat12_vfs_iterate_path(const char *path, vfs_dir_iter_cb cb, void *context) {
+    fat12_vfs_adapter_context_t adapter_ctx;
+    adapter_ctx.cb = cb;
+    adapter_ctx.user_context = context;
+    
+    return fat12_vfs_error_map(fat12_iterate_path(path, fat12_vfs_iterate_adapter, &adapter_ctx));
+}
+
+static int fat12_vfs_change_directory(const char *path) {
+    return fat12_vfs_error_map(fat12_change_directory(path));
+}
+
+static const char *fat12_vfs_get_cwd(void) {
+    return fat12_get_cwd();
+}
+
+static int fat12_vfs_flush(void) {
+    return fat12_vfs_error_map(fat12_flush());
+}
+
+static int fat12_vfs_get_fs_info(vfs_fs_info_t *info) {
+    if (!info) {
+        return VFS_ERR_IO;
+    }
+    info->type = FS_TYPE_FAT12;
+    info->name = "FAT12";
+    info->total_size = g_fs.total_sectors * g_fs.bytes_per_sector;
+    info->block_size = g_fs.cluster_size_bytes;
+    info->total_blocks = g_fs.total_clusters;
+    
+    uint32_t free_clusters = 0;
+    for (uint16_t cluster = 2; cluster < g_fs.total_clusters + 2; cluster++) {
+        if (fat12_get_fat_entry(cluster) == FAT12_CLUSTER_FREE) {
+            free_clusters++;
+        }
+    }
+    info->free_blocks = free_clusters;
+    info->free_size = free_clusters * g_fs.cluster_size_bytes;
+    info->total_inodes = 0;
+    info->free_inodes = 0;
+    
+    return VFS_OK;
+}
+
+vfs_operations_t fat12_get_vfs_ops(void) {
+    vfs_operations_t ops;
+    ops.init = fat12_vfs_mount;
+    ops.mount = fat12_vfs_mount;
+    ops.unmount = 0;
+    ops.read_file = fat12_vfs_read_file;
+    ops.write_file = fat12_vfs_write_file;
+    ops.create_directory = fat12_vfs_create_directory;
+    ops.delete_file = fat12_vfs_delete_file;
+    ops.iterate_current_directory = fat12_vfs_iterate_current_directory;
+    ops.iterate_path = fat12_vfs_iterate_path;
+    ops.change_directory = fat12_vfs_change_directory;
+    ops.get_cwd = fat12_vfs_get_cwd;
+    ops.flush = fat12_vfs_flush;
+    ops.get_fs_info = fat12_vfs_get_fs_info;
+    return ops;
 }

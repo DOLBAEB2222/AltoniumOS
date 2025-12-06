@@ -2,7 +2,7 @@
 #include "../include/shell/commands.h"
 #include "../include/drivers/console.h"
 #include "../include/drivers/keyboard.h"
-#include "../fat12.h"
+#include "../include/fs/vfs.h"
 
 static nano_state_t nano_state = {0};
 
@@ -41,9 +41,9 @@ void nano_init_editor(const char *filename) {
     
     uint32_t file_size = 0;
     uint8_t *fs_io_buffer = commands_get_io_buffer();
-    int result = fat12_read_file(filename, fs_io_buffer, FS_IO_BUFFER_SIZE - 1, &file_size);
+    int result = vfs_read_file(filename, fs_io_buffer, FS_IO_BUFFER_SIZE - 1, &file_size);
     
-    if (result == FAT12_OK && file_size > 0) {
+    if (result == VFS_OK && file_size > 0) {
         int line = 0;
         int line_pos = 0;
         
@@ -464,8 +464,8 @@ int nano_save_file(void) {
         }
     }
     
-    int result = fat12_write_file(nano_state.filename, fs_io_buffer, file_size);
-    if (result == FAT12_OK) {
+    int result = vfs_write_file(nano_state.filename, fs_io_buffer, file_size);
+    if (result == VFS_OK) {
         nano_state.dirty = 0;
         return 1;
     }
@@ -502,7 +502,7 @@ void nano_exit_editor(int save_action) {
         console_print("\n");
     }
     
-    if (commands_is_fat_ready()) {
+    if (commands_is_fs_ready()) {
         console_print("Current directory: ");
         console_print(fat12_get_cwd());
         console_print("\n");

@@ -28,10 +28,7 @@ KERNEL_OBJS = $(BUILD_DIR)/kernel_entry.o \
 	$(BUILD_DIR)/commands.o \
 	$(BUILD_DIR)/nano.o \
 	$(BUILD_DIR)/disk.o \
-	$(BUILD_DIR)/vfs.o \
 	$(BUILD_DIR)/fat12.o \
-	$(BUILD_DIR)/fat32.o \
-	$(BUILD_DIR)/ext2.o \
 	$(BUILD_DIR)/bootlog.o
 
 all: build
@@ -68,16 +65,7 @@ $(BUILD_DIR)/nano.o: shell/nano.c dirs
 $(BUILD_DIR)/disk.o: disk.c dirs
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD_DIR)/vfs.o: fs/vfs.c dirs
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-$(BUILD_DIR)/fat12.o: fs/fat12.c dirs
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-$(BUILD_DIR)/fat32.o: fs/fat32.c dirs
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-$(BUILD_DIR)/ext2.o: fs/ext2.c dirs
+$(BUILD_DIR)/fat12.o: fat12.c dirs
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/bootlog.o: kernel/bootlog.c dirs
