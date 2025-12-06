@@ -5,8 +5,9 @@
 ### Quick Build & Test
 ```bash
 make build          # Build kernel
-make iso-bios       # Create the legacy BIOS ISO image
-make iso-uefi       # Create the UEFI ISO image
+make iso-hybrid     # Create hybrid BIOS/UEFI ISO (RECOMMENDED)
+make iso-bios       # Create legacy BIOS-only ISO image
+make iso-uefi       # Create UEFI-only ISO image
 make img            # Create the FAT12 disk image (make bootable is an alias)
 ./test_boot.sh      # Run automated tests
 ```
@@ -26,15 +27,25 @@ qemu-system-i386 -kernel dist/kernel.elf -drive format=raw,file=dist/os.img,if=i
 qemu-system-i386 -drive file=dist/os.img,format=raw
 ```
 
-### Run UEFI ISO in QEMU
+### Run Hybrid ISO (BIOS or UEFI)
 ```bash
-qemu-system-x86_64 -bios /usr/share/OVMF/OVMF_CODE_4M.fd -cdrom dist/os-uefi.iso
+# In BIOS mode
+qemu-system-i386 -cdrom dist/os-hybrid.iso
+
+# In UEFI mode
+qemu-system-x86_64 -bios /usr/share/OVMF/OVMF_CODE_4M.fd -cdrom dist/os-hybrid.iso
 ```
 
 ### Test on Real Hardware
 ```bash
-sudo dd if=dist/os-uefi.iso of=/dev/sdX bs=4M status=progress conv=fsync
-# Select the USB drive's UEFI boot option (e.g., on AMD E1-7010 laptops)
+# Write hybrid ISO to USB - boots on BOTH BIOS and UEFI systems!
+sudo dd if=dist/os-hybrid.iso of=/dev/sdX bs=4M status=progress conv=fsync
+
+# On the target machine, you'll see a GRUB menu with options:
+# - AltoniumOS - BIOS 32-bit Kernel
+# - AltoniumOS - UEFI 32-bit Kernel
+# - AltoniumOS - UEFI 64-bit Kernel (Placeholder)
+# - Hardware Diagnostics
 ```
 
 ### Clean Build

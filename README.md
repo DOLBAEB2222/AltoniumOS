@@ -86,14 +86,15 @@ AltoniumOS includes a theme system that allows you to customize the console appe
 # Build the kernel ELF binary
 make build
 
-# Create BIOS-only ISO image (legacy boot)
-make iso-bios
+# Create hybrid BIOS/UEFI ISO image (RECOMMENDED - boots on both firmware types)
+make iso-hybrid
 
-# Create pure UEFI ISO image
-make iso-uefi
-
-# Build both ISO flavors in one shot
+# Or build using the simpler 'iso' target (now defaults to hybrid)
 make iso
+
+# Legacy separate ISO targets (still available):
+make iso-bios    # BIOS-only ISO image
+make iso-uefi    # UEFI-only ISO image
 
 # Create the FAT12 disk image used by legacy BIOS boot
 make img
@@ -124,20 +125,31 @@ qemu-system-i386 -kernel dist/kernel.elf -s -S &
 gdb dist/kernel.elf -ex "target remote :1234"
 ```
 
-### Booting with UEFI firmware
+### Booting with UEFI firmware and Hybrid ISOs
 
-The project now includes a native UEFI bootstrapper (`EFI/BOOT/BOOTX64.EFI`) that prints firmware status messages, loads a standalone GRUB EFI image, and then launches the 32-bit Multiboot kernel. Build the ISO with `make iso-uefi` (or `make iso`) and boot it with either QEMU or real hardware:
+The project includes a **hybrid BIOS/UEFI ISO** (`make iso-hybrid`) that boots on both legacy BIOS and modern UEFI systems without any manual configuration. The hybrid ISO contains:
+
+- **BIOS boot path:** GRUB with El Torito boot sector
+- **UEFI boot path:** Native UEFI bootstrapper (`EFI/BOOT/BOOTX64.EFI`) + GRUB EFI loader
+- **Multiple kernel targets:** x86 32-bit kernel and x64 placeholder
+- **Interactive menu:** Choose between BIOS/UEFI boot modes and architectures
 
 ```bash
-# QEMU + OVMF firmware
-make run-iso-uefi  # helper message if you forget the command
-qemu-system-x86_64 -bios /usr/share/OVMF/OVMF_CODE_4M.fd -cdrom dist/os-uefi.iso
+# Build the hybrid ISO (RECOMMENDED)
+make iso-hybrid
+
+# Test in BIOS mode with QEMU
+qemu-system-i386 -cdrom dist/os-hybrid.iso
+
+# Test in UEFI mode with QEMU + OVMF firmware
+qemu-system-x86_64 -bios /usr/share/OVMF/OVMF_CODE_4M.fd -cdrom dist/os-hybrid.iso
 
 # Write to USB flash drive for hardware testing (replace /dev/sdX)
-sudo dd if=dist/os-uefi.iso of=/dev/sdX bs=4M status=progress conv=fsync
+# This single image boots on BOTH BIOS and UEFI systems!
+sudo dd if=dist/os-hybrid.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
-On a physical machine, choose the UEFI boot entry that matches your USB stick (for example on AMD E1-7010 laptops). The firmware will display the bootstrap banner, chain-load GRUB, and eventually drop you into the familiar shell once the kernel finishes loading.
+On a physical machine, the firmware will automatically detect whether you're booting in BIOS or UEFI mode. In both cases, you'll see the GRUB menu allowing you to select the appropriate kernel configuration.
 
 **UEFI Hardware Compatibility:**
 - Console output uses pure ASCII characters (no UTF-8 or extended characters) for maximum compatibility

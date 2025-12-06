@@ -26,52 +26,80 @@ The UEFI boot process consists of three components:
    - FAT12 filesystem
    - All OS commands and features
 
-## Building UEFI ISO
+## Building Hybrid BIOS/UEFI ISO
 
 ### Prerequisites
 
 ```bash
-sudo apt-get install gnu-efi grub-efi-amd64-bin xorriso ovmf
+sudo apt-get install gnu-efi grub-efi-amd64-bin xorriso ovmf grub-pc-bin
 ```
 
 ### Build Commands
 
 ```bash
-# Build UEFI bootable ISO
-make iso-uefi
+# Build hybrid BIOS/UEFI bootable ISO (RECOMMENDED)
+make iso-hybrid
 
-# Build both BIOS and UEFI ISOs
+# Or use the default 'iso' target (now creates hybrid ISO)
 make iso
 
+# Legacy separate builds still available:
+make iso-uefi    # UEFI-only ISO
+make iso-bios    # BIOS-only ISO
+
 # Clean and rebuild everything
-make clean && make iso-uefi
+make clean && make iso-hybrid
 ```
 
 ### Build Output
 
-- `dist/os-uefi.iso` - UEFI bootable ISO image
-- `dist/EFI/BOOT/BOOTX64.EFI` - First stage bootloader
-- `dist/EFI/ALTONIUM/GRUBX64.EFI` - GRUB chainloader
-- `dist/kernel.elf` - 32-bit kernel
+- `dist/os-hybrid.iso` - Hybrid BIOS/UEFI bootable ISO image
+- `dist/EFI/BOOT/BOOTX64.EFI` - First stage UEFI bootloader
+- `dist/EFI/ALTONIUM/GRUBX64.EFI` - GRUB chainloader for UEFI
+- `dist/hybrid_iso/boot/x86/kernel.elf` - 32-bit x86 kernel
+- `dist/hybrid_iso/boot/x64/kernel64.elf` - 64-bit x64 kernel placeholder
+- `dist/hybrid_iso/boot/grub/grub.cfg` - Unified GRUB configuration
 
 ## Testing with QEMU
 
-### Basic UEFI Boot Test
+### Test Hybrid ISO in BIOS Mode
 
 ```bash
-qemu-system-x86_64 -bios /usr/share/OVMF/OVMF_CODE_4M.fd -cdrom dist/os-uefi.iso
+qemu-system-i386 -cdrom dist/os-hybrid.iso
+```
+
+### Test Hybrid ISO in UEFI Mode
+
+```bash
+qemu-system-x86_64 -bios /usr/share/OVMF/OVMF_CODE_4M.fd -cdrom dist/os-hybrid.iso
 ```
 
 ### With Serial Console (for debugging)
 
 ```bash
-qemu-system-x86_64 -bios /usr/share/OVMF/OVMF_CODE_4M.fd -cdrom dist/os-uefi.iso -serial stdio
+# UEFI mode
+qemu-system-x86_64 -bios /usr/share/OVMF/OVMF_CODE_4M.fd -cdrom dist/os-hybrid.iso -serial stdio
+
+# BIOS mode
+qemu-system-i386 -cdrom dist/os-hybrid.iso -serial stdio
 ```
 
 ### With Memory Debugging
 
 ```bash
-qemu-system-x86_64 -bios /usr/share/OVMF/OVMF_CODE_4M.fd -cdrom dist/os-uefi.iso -m 512M -no-reboot -no-shutdown
+qemu-system-x86_64 -bios /usr/share/OVMF/OVMF_CODE_4M.fd -cdrom dist/os-hybrid.iso -m 512M -no-reboot -no-shutdown
+```
+
+### Automated Verification
+
+```bash
+# Run the hybrid ISO verification script
+./scripts/verify_hybrid_iso.sh
+
+# This will:
+# - Test BIOS boot with qemu-system-i386
+# - Test UEFI boot with qemu-system-x86_64 + OVMF
+# - Verify ISO structure and contents
 ```
 
 ## Writing to USB for Real Hardware
@@ -82,8 +110,9 @@ qemu-system-x86_64 -bios /usr/share/OVMF/OVMF_CODE_4M.fd -cdrom dist/os-uefi.iso
 # Identify USB device (e.g., /dev/sdb)
 lsblk
 
-# Write ISO to USB (REPLACE /dev/sdX with your device!)
-sudo dd if=dist/os-uefi.iso of=/dev/sdX bs=4M status=progress conv=fsync
+# Write hybrid ISO to USB (REPLACE /dev/sdX with your device!)
+# This single image boots on BOTH BIOS and UEFI systems!
+sudo dd if=dist/os-hybrid.iso of=/dev/sdX bs=4M status=progress conv=fsync
 
 # Sync to ensure all data is written
 sync
@@ -102,6 +131,39 @@ Use tools like:
 - File system: FAT32
 - Write in DD mode
 
+## Hybrid ISO Boot Menu
+
+When booting from the hybrid ISO, you'll see a GRUB menu with the following options:
+
+```
+AltoniumOS - BIOS 32-bit Kernel
+AltoniumOS - UEFI 32-bit Kernel
+AltoniumOS - UEFI 64-bit Kernel (Placeholder)
+Hardware Diagnostics
+```
+
+**Menu Options:**
+
+1. **BIOS 32-bit Kernel** - Boots the x86 kernel in BIOS mode
+   - Uses multiboot protocol
+   - Passes `bootmode=bios arch=x86` parameters
+   
+2. **UEFI 32-bit Kernel** - Boots the x86 kernel in UEFI mode
+   - Uses multiboot protocol via GRUB EFI
+   - Passes `bootmode=uefi arch=x86` parameters
+   
+3. **UEFI 64-bit Kernel (Placeholder)** - Demonstrates x64 support
+   - Currently displays a placeholder message
+   - Ready for future 64-bit kernel implementation
+   - Passes `bootmode=uefi arch=x64` parameters
+   
+4. **Hardware Diagnostics** - Shows system information
+   - Memory map
+   - Available devices
+   - Boot mode details
+
+The first menu entry is selected by default and boots automatically after 5 seconds.
+
 ## Booting on Real Hardware (AMD E1-7010)
 
 ### BIOS Settings
@@ -109,9 +171,10 @@ Use tools like:
 1. Enter BIOS/UEFI setup (usually F2, F10, or Del during boot)
 2. Disable Secure Boot (required for unsigned bootloaders)
 3. Enable USB Boot
-4. Set boot mode to UEFI (not Legacy/CSM)
-5. Set USB as first boot device
-6. Save and exit
+4. For UEFI boot: Set boot mode to UEFI (not Legacy/CSM)
+5. For BIOS boot: Enable Legacy boot or CSM mode
+6. Set USB as first boot device
+7. Save and exit
 
 ### Boot Process
 
