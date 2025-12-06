@@ -1,4 +1,6 @@
 #include "disk.h"
+#include "include/kernel/hw_detect.h"
+#include "include/drivers/console.h"
 
 /* Performance counters */
 static uint32_t g_disk_reads = 0;
@@ -67,6 +69,12 @@ static void select_drive(void) {
 
 /* Initialize the ATA driver */
 int disk_init(void) {
+    /* Check if storage controller is available */
+    if (!hw_has_storage_controller()) {
+        console_print("Warning: No storage controller detected, skipping disk init\n");
+        return -10;  /* Hardware not available */
+    }
+    
     /* Select master drive in LBA mode */
     select_drive();
     

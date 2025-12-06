@@ -1,6 +1,8 @@
 #include "../include/shell/commands.h"
 #include "../include/shell/nano.h"
 #include "../include/kernel/bootlog.h"
+#include "../include/kernel/hw_detect.h"
+#include "../include/kernel/memory.h"
 #include "../include/drivers/console.h"
 #include "../disk.h"
 #include "../fat12.h"
@@ -126,6 +128,7 @@ void handle_help(void) {
     console_print("  clear          - Clear the screen\n");
     console_print("  echo TEXT      - Print text to the screen\n");
     console_print("  fetch          - Print OS and system information\n");
+    console_print("  hwinfo         - Display detailed hardware information\n");
     console_print("  disk           - Test disk I/O and show disk information\n");
     console_print("  ls [PATH]      - List files in the current or given directory\n");
     console_print("  dir [PATH]     - Alias for ls\n");
@@ -586,6 +589,147 @@ void handle_bootlog_command(void) {
     bootlog_print();
 }
 
+void handle_hwinfo_command(void) {
+    const hw_capabilities_t *hw_caps = hw_get_capabilities();
+    
+    console_print("=== Hardware Information ===\n");
+    
+    /* CPU Information */
+    console_print("CPU: ");
+    console_print(hw_caps->cpu_vendor);
+    console_print(" ");
+    console_print(hw_caps->cpu_model);
+    console_print("\n");
+    
+    console_print("CPU Family: ");
+    print_unsigned(hw_caps->cpu_family);
+    console_print(", Model: ");
+    print_unsigned(hw_caps->cpu_model_num);
+    console_print(", Stepping: ");
+    print_unsigned(hw_caps->cpu_stepping);
+    console_print("\n");
+    
+    /* CPU Features */
+    console_print("CPU Features:\n");
+    console_print("  PAE: ");
+    console_print(hw_caps->cpu_features.pae ? "Yes" : "No");
+    console_print(" (");
+    console_print(memory_is_pae_enabled() ? "Enabled" : "Disabled");
+    console_print(")\n");
+    
+    console_print("  APIC: ");
+    console_print(hw_caps->cpu_features.apic ? "Yes" : "No");
+    console_print("\n");
+    
+    console_print("  x2APIC: ");
+    console_print(hw_caps->cpu_features.x2apic ? "Yes" : "No");
+    console_print("\n");
+    
+    console_print("  SSE2: ");
+    console_print(hw_caps->cpu_features.sse2 ? "Yes" : "No");
+    console_print("\n");
+    
+    console_print("  Long Mode: ");
+    console_print(hw_caps->cpu_features.long_mode ? "Yes" : "No");
+    console_print("\n");
+    
+    /* Memory Information */
+    console_print("Memory:\n");
+    console_print("  Total: ");
+    print_unsigned(hw_caps->total_memory_kb / 1024);
+    console_print(" MB (");
+    print_unsigned(hw_caps->total_memory_kb);
+    console_print(" KB)\n");
+    
+    console_print("  Usable: ");
+    print_unsigned(hw_caps->usable_memory_kb / 1024);
+    console_print(" MB (");
+    print_unsigned(hw_caps->usable_memory_kb);
+    console_print(" KB)\n");
+    
+    console_print("  Memory regions: ");
+    print_unsigned(hw_caps->memory_region_count);
+    console_print("\n");
+    
+    /* Hardware Devices */
+    console_print("Hardware Devices:\n");
+    console_print("  PS/2 Controller: ");
+    console_print(hw_caps->pci_devices.ps2_controller_present ? "Present" : "Absent");
+    console_print("\n");
+    
+    console_print("  USB Controller: ");
+    console_print(hw_caps->pci_devices.usb_controller_present ? "Present" : "Absent");
+    console_print("\n");
+    
+    console_print("  Storage Controller: ");
+    console_print(hw_caps->pci_devices.storage_controller_present ? "Present" : "Absent");
+    console_print("\n");
+    
+    console_print("  PCI Bus: ");
+    console_print(hw_caps->pci_devices.pci_bus_present ? "Functional" : "Not detected");
+    console_print("\n");
+    
+    /* ACPI Information */
+    console_print("ACPI:\n");
+    console_print("  RSDP: ");
+    if (hw_caps->acpi_info.present) {
+        console_print("Found at 0x");
+        /* Print hex address */
+        char hex_chars[] = "0123456789ABCDEF";
+        uint64_t addr = hw_caps->rsdp_address;
+        for (int i = 60; i >= 0; i -= 4) {
+            uint8_t nibble = (addr >> i) & 0xF;
+            char hex_char = hex_chars[nibble];
+            console_putchar(hex_char);
+        }
+        console_print(" (Revision ");
+        print_unsigned(hw_caps->rsdp_revision);
+        console_print(")\n");
+        
+        console_print("  OEM ID: ");
+        for (int i = 0; i < 6; i++) {
+            console_putchar(hw_caps->rsdp_oem_id[i]);
+        }
+        console_print("\n");
+    } else {
+        console_print("Not found\n");
+    }
+    
+    /* Boot Information */
+    console_print("Boot Information:\n");
+    console_print("  Mode: ");
+    if (hw_caps->boot_info.boot_mode_bios) {
+        console_print("BIOS");
+    } else if (hw_caps->boot_info.boot_mode_uefi) {
+        console_print("UEFI");
+    } else {
+        console_print("Unknown");
+    }
+    console_print("\n");
+    
+    console_print("  PAE Enabled: ");
+    console_print(hw_caps->boot_info.pae_enabled ? "Yes" : "No");
+    console_print("\n");
+    
+    /* Memory Manager Statistics */
+    if (memory_is_pae_enabled()) {
+        console_print("Memory Manager:\n");
+        console_print("  Total: ");
+        print_unsigned((uint32_t)(pmm_get_total_memory() / 1024 / 1024));
+        console_print(" MB\n");
+        
+        console_print("  Free: ");
+        print_unsigned((uint32_t)(pmm_get_free_memory() / 1024 / 1024));
+        console_print(" MB\n");
+        
+        console_print("  Used: ");
+        print_unsigned((uint32_t)(pmm_get_used_memory() / 1024 / 1024));
+        console_print(" MB\n");
+    }
+    
+    console_print("========================\n");
+}
+
 void execute_command(const char *cmd_line) {
     if (!cmd_line || *cmd_line == '\0') {
         return;
@@ -659,6 +803,9 @@ void execute_command(const char *cmd_line) {
     } else if (strncmp_impl(cmd_line, "bootlog", 7) == 0 && 
                (cmd_line[7] == '\0' || cmd_line[7] == ' ' || cmd_line[7] == '\n')) {
         handle_bootlog_command();
+    } else if (strncmp_impl(cmd_line, "hwinfo", 6) == 0 && 
+               (cmd_line[6] == '\0' || cmd_line[6] == ' ' || cmd_line[6] == '\n')) {
+        handle_hwinfo_command();
     } else if (strncmp_impl(cmd_line, "help", 4) == 0 && 
                (cmd_line[4] == '\0' || cmd_line[4] == ' ' || cmd_line[4] == '\n')) {
         handle_help();

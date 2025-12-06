@@ -1,5 +1,7 @@
 #include "../include/kernel/main.h"
 #include "../include/kernel/bootlog.h"
+#include "../include/kernel/hw_detect.h"
+#include "../include/kernel/memory.h"
 #include "../include/drivers/console.h"
 #include "../include/drivers/keyboard.h"
 #include "../include/shell/prompt.h"
@@ -38,15 +40,48 @@ const char *get_boot_mode_name(void) {
     }
 }
 
+int get_current_boot_mode(void) {
+    return boot_mode;
+}
+
 void kernel_main(void) {
     detect_boot_mode();
     bootlog_init();
+    
+    /* Initialize hardware detection */
+    hw_detect_init();
+    
+    /* Initialize memory management */
+    memory_init();
+    
     vga_clear();
     console_print("Welcome to AltoniumOS 1.0.0\n");
 
     console_print("Boot mode: ");
     console_print(get_boot_mode_name());
     console_print("\n");
+    
+    /* Display hardware information */
+    const hw_capabilities_t *hw_caps = hw_get_capabilities();
+    console_print("CPU: ");
+    console_print(hw_caps->cpu_vendor);
+    console_print(" ");
+    console_print(hw_caps->cpu_model);
+    console_print("\n");
+    
+    console_print("PAE: ");
+    if (hw_caps->cpu_features.pae) {
+        console_print(memory_is_pae_enabled() ? "Enabled" : "Supported but not enabled");
+    } else {
+        console_print("Not supported");
+    }
+    console_print("\n");
+    
+    console_print("Memory: ");
+    print_unsigned(hw_caps->usable_memory_kb / 1024);
+    console_print(" MB usable, ");
+    print_unsigned(hw_caps->total_memory_kb / 1024);
+    console_print(" MB total\n");
     
     console_print("Initializing disk driver... ");
     int disk_result = disk_init();

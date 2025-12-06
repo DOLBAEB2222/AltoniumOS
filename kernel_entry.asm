@@ -16,11 +16,13 @@ multiboot_header:
 [SECTION .text]
 
 extern kernel_main
+extern memory_enable_pae
 
 global _start
 global halt_cpu
 global multiboot_magic_storage
 global multiboot_info_ptr_storage
+global enable_pae_from_asm
 
 _start:
     ; Preserve Multiboot registers for the kernel
@@ -36,6 +38,27 @@ _start:
     ; Should never reach here, but halt if we do
     call halt_cpu
     jmp $
+
+; Enable PAE from assembly (called from C if needed)
+enable_pae_from_asm:
+    ; Check if we can enable PAE
+    mov eax, 1
+    cpuid
+    test edx, 0x20        ; Check PAE bit
+    jz .pae_failed
+    
+    ; Enable PAE in CR4
+    mov eax, cr4
+    or eax, 0x20          ; Set PAE bit
+    mov cr4, eax
+    
+    ; Return success
+    xor eax, eax
+    ret
+    
+.pae_failed:
+    mov eax, 1            ; Return error
+    ret
 
 ; CPU halt function
 halt_cpu:
