@@ -78,6 +78,7 @@ AltoniumOS includes a theme system that allows you to customize the console appe
 - `python3` (for generating the FAT12 disk image)
 - `make` for building
 - `qemu-system-i386` for testing (optional)
+- `gnu-efi`, `grub-efi-amd64-bin`, and `ovmf` for building and testing the UEFI boot path
 
 ### Build Instructions
 
@@ -85,7 +86,16 @@ AltoniumOS includes a theme system that allows you to customize the console appe
 # Build the kernel ELF binary
 make build
 
-# Create the FAT12 disk image (make bootable is an alias)
+# Create BIOS-only ISO image (legacy boot)
+make iso-bios
+
+# Create pure UEFI ISO image
+make iso-uefi
+
+# Build both ISO flavors in one shot
+make iso
+
+# Create the FAT12 disk image used by legacy BIOS boot
 make img
 
 # Clean build artifacts
@@ -113,6 +123,21 @@ qemu-system-i386 -hda dist/os.img
 qemu-system-i386 -kernel dist/kernel.elf -s -S &
 gdb dist/kernel.elf -ex "target remote :1234"
 ```
+
+### Booting with UEFI firmware
+
+The project now includes a native UEFI bootstrapper (`EFI/BOOT/BOOTX64.EFI`) that prints firmware status messages, loads a standalone GRUB EFI image, and then launches the 32-bit Multiboot kernel. Build the ISO with `make iso-uefi` (or `make iso`) and boot it with either QEMU or real hardware:
+
+```bash
+# QEMU + OVMF firmware
+make run-iso-uefi  # helper message if you forget the command
+qemu-system-x86_64 -bios /usr/share/OVMF/OVMF_CODE_4M.fd -cdrom dist/os-uefi.iso
+
+# Write to USB flash drive for hardware testing (replace /dev/sdX)
+sudo dd if=dist/os-uefi.iso of=/dev/sdX bs=4M status=progress conv=fsync
+```
+
+On a physical machine, choose the UEFI boot entry that matches your USB stick (for example on AMD E1-7010 laptops). The firmware will display the bootstrap banner, chain-load GRUB, and eventually drop you into the familiar shell once the kernel finishes loading.
 
 ### Testing Disk I/O
 
@@ -463,6 +488,8 @@ Halting CPU...
 ```
 .
 ├── boot.asm           - x86 16-bit bootloader (now with a FAT12 BPB)
+├── bootloader/
+│   └── uefi_loader.c  - UEFI bootstrap that chain-loads GRUB and prints firmware logs
 ├── kernel_entry.asm   - x86 32-bit kernel entry point and low-level I/O
 ├── kernel.c           - Main kernel code with shell and command handlers
 ├── disk.c / disk.h    - ATA PIO driver for raw sector access
@@ -493,6 +520,10 @@ Halting CPU...
 3. **Kernel Main** (`kernel.c`) - Implements command parsing and execution
 4. **VGA Driver** - Direct VGA buffer manipulation for text output (0xB8000)
 5. **Command Handlers** - Individual handlers for each console command
+
+### UEFI Boot Pipeline
+
+UEFI-capable systems boot from `EFI/BOOT/BOOTX64.EFI`, a small PE/COFF application built from `bootloader/uefi_loader.c`. The loader uses `EFI_SIMPLE_FILE_SYSTEM_PROTOCOL` to locate `EFI/ALTONIUM/GRUBX64.EFI`, prints status information through `EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL`, and loads the standalone GRUB image via `BootServices->LoadImage`. GRUB remains responsible for loading the Multiboot kernel, but it now passes `bootmode=uefi` on the kernel command line so the C code can adjust its behavior/display. Legacy BIOS mode continues to use the existing boot sector and GRUB ISO flow.
 
 ### VGA Buffer Management
 

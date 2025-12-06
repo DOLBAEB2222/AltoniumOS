@@ -4,6 +4,7 @@ typedef unsigned short uint16_t;
 typedef unsigned int uint32_t;
 typedef signed int int32_t;
 typedef unsigned long size_t;
+typedef unsigned long uintptr_t;
 typedef int ssize_t;
 
 #define VGA_BUFFER ((char *)0xB8000)
@@ -91,6 +92,47 @@ static theme_t themes[THEME_COUNT] = {
 };
 
 static int current_theme = THEME_NORMAL;
+
+#define MULTIBOOT_BOOTLOADER_MAGIC 0x2BADB002
+
+typedef struct {
+    uint32_t flags;
+    uint32_t mem_lower;
+    uint32_t mem_upper;
+    uint32_t boot_device;
+    uint32_t cmdline;
+    uint32_t mods_count;
+    uint32_t mods_addr;
+    uint32_t syms[4];
+    uint32_t mmap_length;
+    uint32_t mmap_addr;
+    uint32_t drives_length;
+    uint32_t drives_addr;
+    uint32_t config_table;
+    uint32_t boot_loader_name;
+    uint32_t apm_table;
+    uint32_t vbe_control_info;
+    uint32_t vbe_mode_info;
+    uint16_t vbe_mode;
+    uint16_t vbe_interface_seg;
+    uint16_t vbe_interface_off;
+    uint16_t vbe_interface_len;
+} multiboot_info_t;
+
+extern uint32_t multiboot_magic_storage;
+extern uint32_t multiboot_info_ptr_storage;
+
+enum {
+    BOOT_MODE_UNKNOWN = 0,
+    BOOT_MODE_BIOS = 1,
+    BOOT_MODE_UEFI = 2
+};
+
+static int boot_mode = BOOT_MODE_UNKNOWN;
+
+static void detect_boot_mode(void);
+static const char *get_boot_mode_name(void);
+static int string_contains(const char *haystack, const char *needle);
 
 /* External: defined in assembly */
 extern void halt_cpu(void);
@@ -376,8 +418,28 @@ void strcpy_impl(char *dest, const char *src) {
 
 size_t strlen_impl(const char *str) {
     size_t len = 0;
-    while (str[len]) len++;
+    while (str && str[len]) len++;
     return len;
+}
+
+static int string_contains(const char *haystack, const char *needle) {
+    if (!haystack || !needle) {
+        return 0;
+    }
+    size_t needle_len = strlen_impl(needle);
+    if (needle_len == 0) {
+        return 0;
+    }
+    for (size_t i = 0; haystack[i] != '\0'; i++) {
+        size_t j = 0;
+        while (haystack[i + j] != '\0' && needle[j] != '\0' && haystack[i + j] == needle[j]) {
+            j++;
+        }
+        if (j == needle_len) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 const char *skip_whitespace(const char *str) {
@@ -457,6 +519,32 @@ void print_decimal(int value) {
         magnitude = (uint32_t)value;
     }
     print_unsigned(magnitude);
+}
+
+static void detect_boot_mode(void) {
+    boot_mode = BOOT_MODE_BIOS;
+    if (multiboot_magic_storage != MULTIBOOT_BOOTLOADER_MAGIC) {
+        boot_mode = BOOT_MODE_UNKNOWN;
+        return;
+    }
+    multiboot_info_t *info = (multiboot_info_t *)(uintptr_t)multiboot_info_ptr_storage;
+    if (!info) {
+        return;
+    }
+    if ((info->flags & (1u << 2)) != 0 && info->cmdline != 0) {
+        const char *cmdline = (const char *)(uintptr_t)info->cmdline;
+        if (string_contains(cmdline, "bootmode=uefi")) {
+            boot_mode = BOOT_MODE_UEFI;
+        }
+    }
+}
+
+static const char *get_boot_mode_name(void) {
+    switch (boot_mode) {
+        case BOOT_MODE_UEFI: return "UEFI";
+        case BOOT_MODE_BIOS: return "BIOS";
+        default: return "Unknown";
+    }
 }
 
 const char *fat12_error_string(int code) {
@@ -540,6 +628,10 @@ void handle_fetch(void) {
     
     console_print("Build Time: ");
     console_print(build_time);
+    console_print("\n");
+
+    console_print("Boot Mode: ");
+    console_print(get_boot_mode_name());
     console_print("\n");
 }
 
@@ -1780,11 +1872,16 @@ void console_print_to_pos(int y, int x, const char *str) {
 
 /* Main kernel function */
 void kernel_main(void) {
+    detect_boot_mode();
     vga_clear();
     console_print("Welcome to ");
     console_print(os_name);
     console_print(" ");
     console_print(os_version);
+    console_print("\n");
+
+    console_print("Boot mode: ");
+    console_print(get_boot_mode_name());
     console_print("\n");
     
     /* Initialize disk driver */

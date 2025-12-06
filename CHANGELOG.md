@@ -1,5 +1,24 @@
 # AltoniumOS Changelog
 
+## Version 1.1.0 - December 6, 2025
+
+### UEFI Firmware Support
+- Added a native UEFI bootstrap (`bootloader/uefi_loader.c`) that prints firmware status text, opens the EFI System Partition, and chain-loads a standalone GRUB EFI payload.
+- Generated a standalone `EFI/ALTONIUM/GRUBX64.EFI` image via `grub-mkstandalone` so modern firmware can load the Multiboot kernel without legacy BIOS/CSM.
+- Created a separate `grub-uefi.cfg` that injects `bootmode=uefi` on the kernel command line for runtime detection.
+
+### Build & Tooling
+- Introduced `make iso-bios` and `make iso-uefi` targets plus the aggregate `make iso` to build both artifacts.
+- Added a `run-iso-uefi` helper that prints the exact QEMU + OVMF command line.
+- Integrated GNU-EFI libraries in the build to produce `EFI/BOOT/BOOTX64.EFI` via PE/COFF linking and objcopy.
+
+### Kernel & Shell
+- Captured the Multiboot magic/info pointer in `kernel_entry.asm` and exposed the data to C code.
+- Added command-line parsing so the kernel detects whether it was launched through the UEFI path or traditional BIOS and displays the boot mode during `fetch` and at startup.
+
+### Documentation
+- Updated README and QUICK_START with UEFI prerequisites, build targets, QEMU/USB boot instructions, and architectural notes.
+
 ## Version 1.0.1 - December 2, 2025
 
 ### Major Improvements
