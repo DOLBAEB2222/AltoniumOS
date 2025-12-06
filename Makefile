@@ -17,6 +17,17 @@ UEFI_STAGE_DIR = $(DIST_DIR)/uefi_iso
 ISO_BIOS = $(DIST_DIR)/os.iso
 ISO_UEFI = $(DIST_DIR)/os-uefi.iso
 
+KERNEL_OBJS = $(BUILD_DIR)/kernel_entry.o \
+	$(BUILD_DIR)/main.o \
+	$(BUILD_DIR)/string.o \
+	$(BUILD_DIR)/vga_console.o \
+	$(BUILD_DIR)/keyboard.o \
+	$(BUILD_DIR)/prompt.o \
+	$(BUILD_DIR)/commands.o \
+	$(BUILD_DIR)/nano.o \
+	$(BUILD_DIR)/disk.o \
+	$(BUILD_DIR)/fat12.o
+
 all: build
 
 build: $(DIST_DIR)/kernel.elf $(DIST_DIR)/kernel.bin
@@ -27,7 +38,25 @@ dirs:
 $(BUILD_DIR)/kernel_entry.o: kernel_entry.asm dirs
 	$(AS) $(ASFLAGS) -o $@ $<
 
-$(BUILD_DIR)/kernel.o: kernel.c dirs
+$(BUILD_DIR)/main.o: kernel/main.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/string.o: lib/string.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/vga_console.o: drivers/console/vga_console.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/keyboard.o: drivers/input/keyboard.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/prompt.o: shell/prompt.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/commands.o: shell/commands.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/nano.o: shell/nano.c dirs
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/disk.o: disk.c dirs
@@ -39,8 +68,8 @@ $(BUILD_DIR)/fat12.o: fat12.c dirs
 $(BUILD_DIR)/uefi_loader.o: bootloader/uefi_loader.c dirs
 	$(CC) $(UEFI_CFLAGS) -c -o $@ $<
 
-$(DIST_DIR)/kernel.elf: $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/disk.o $(BUILD_DIR)/fat12.o dirs
-	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/disk.o $(BUILD_DIR)/fat12.o
+$(DIST_DIR)/kernel.elf: $(KERNEL_OBJS) dirs
+	$(LD) $(LDFLAGS) -o $@ $(KERNEL_OBJS)
 
 $(DIST_DIR)/kernel.bin: $(DIST_DIR)/kernel.elf
 	objcopy -O binary $< $@
@@ -119,3 +148,4 @@ help:
 	@echo "  clean        - Remove build artifacts"
 	@echo "  run          - Show how to run with QEMU direct kernel boot"
 	@echo "  help         - Show this help message"
+

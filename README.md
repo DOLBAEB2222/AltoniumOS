@@ -673,6 +673,119 @@ qemu-system-i386 -kernel dist/kernel.elf -s -S &
 gdb -ex "target remote :1234" dist/kernel.elf
 ```
 
+## Modular Architecture
+
+AltoniumOS has been refactored into a modular architecture for better maintainability and readability. The codebase is organized into logical subsystems:
+
+### Directory Structure
+
+```
+include/
+  drivers/
+    console.h      - VGA console and theme system interface
+    keyboard.h     - Keyboard input and scancode handling interface
+  shell/
+    commands.h     - Command handler interface
+    prompt.h       - Shell prompt and input buffer interface
+    nano.h         - Nano text editor interface
+  lib/
+    string.h       - Common types, string utilities, and I/O helpers
+  kernel/
+    main.h         - Kernel initialization and boot mode detection
+
+drivers/
+  console/
+    vga_console.c  - VGA text-mode rendering, cursor management, theme system
+  input/
+    keyboard.c     - PS/2 keyboard driver, scancode conversion, Ctrl/extended key tracking
+
+shell/
+  commands.c       - All command handlers (ls, cd, cat, echo, theme, etc.)
+  prompt.c         - Shell prompt rendering and input handling
+  nano.c           - Full-featured text editor with save/exit/navigation/help
+
+lib/
+  string.c         - String manipulation, number printing, tokenization
+
+kernel/
+  main.c           - Kernel entry point, initialization, main command loop
+
+disk.c             - ATA PIO disk driver (legacy root location)
+fat12.c            - FAT12 filesystem implementation (legacy root location)
+```
+
+### Module Responsibilities
+
+**Console Driver** (`drivers/console/`):
+- VGA buffer management and character rendering
+- Cursor positioning via hardware I/O ports
+- Theme system with three built-in color schemes
+- Status bar rendering for nano editor
+
+**Keyboard Driver** (`drivers/input/`):
+- PS/2 keyboard port polling and scancode reading
+- Extended scancode handling (0xE0 prefix for Delete, Home, End, etc.)
+- Ctrl key state tracking
+- ASCII conversion for printable characters
+- Routing input to shell prompt or nano editor
+
+**Shell Subsystem** (`shell/`):
+- **prompt.c**: Input buffer management, prompt line rendering, scancode handling
+- **commands.c**: Command parsing, dispatch, and all handler implementations
+- **nano.c**: Full-screen text editor with viewport scrolling, file I/O, status bar
+
+**Library** (`lib/`):
+- Type definitions (uint8_t, uint32_t, size_t, etc.)
+- String utilities (strcmp, strcpy, strlen, tokenization)
+- Number printing and formatting
+- Hardware I/O primitives (inb/outb inline functions)
+
+**Kernel Core** (`kernel/`):
+- Boot mode detection (BIOS vs UEFI via Multiboot command line)
+- Disk and filesystem initialization
+- Main command loop coordinating prompt and keyboard input
+
+### Adding New Features
+
+**To add a new console command:**
+
+1. Add a handler function prototype to `include/shell/commands.h`
+2. Implement the handler in `shell/commands.c`
+3. Add parsing logic in `execute_command()` in `shell/commands.c`
+4. Update `handle_help()` to document the command
+
+**To add a new driver:**
+
+1. Create a subdirectory under `drivers/` (e.g., `drivers/timer/`)
+2. Add a header in `include/drivers/` (e.g., `include/drivers/timer.h`)
+3. Implement the driver and update the Makefile to compile it
+4. Initialize the driver in `kernel/main.c`
+
+**To extend the nano editor:**
+
+1. Modify `shell/nano.c` for new features
+2. Add new keybindings in `nano_handle_scancode()`
+3. Update the help overlay in `nano_render_help_overlay()`
+
+### Build System
+
+The Makefile compiles each module into a separate object file and links them together:
+
+```makefile
+KERNEL_OBJS = $(BUILD_DIR)/kernel_entry.o \
+              $(BUILD_DIR)/main.o \
+              $(BUILD_DIR)/string.o \
+              $(BUILD_DIR)/vga_console.o \
+              $(BUILD_DIR)/keyboard.o \
+              $(BUILD_DIR)/prompt.o \
+              $(BUILD_DIR)/commands.o \
+              $(BUILD_DIR)/nano.o \
+              $(BUILD_DIR)/disk.o \
+              $(BUILD_DIR)/fat12.o
+```
+
+Each module is compiled with the same flags and linked into the final `kernel.elf`.
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
