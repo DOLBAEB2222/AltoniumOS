@@ -26,7 +26,8 @@ KERNEL_OBJS = $(BUILD_DIR)/kernel_entry.o \
 	$(BUILD_DIR)/commands.o \
 	$(BUILD_DIR)/nano.o \
 	$(BUILD_DIR)/disk.o \
-	$(BUILD_DIR)/fat12.o
+	$(BUILD_DIR)/fat12.o \
+	$(BUILD_DIR)/bootlog.o
 
 all: build
 
@@ -65,6 +66,9 @@ $(BUILD_DIR)/disk.o: disk.c dirs
 $(BUILD_DIR)/fat12.o: fat12.c dirs
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+$(BUILD_DIR)/bootlog.o: kernel/bootlog.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
 $(BUILD_DIR)/uefi_loader.o: bootloader/uefi_loader.c dirs
 	$(CC) $(UEFI_CFLAGS) -c -o $@ $<
 
@@ -75,6 +79,9 @@ $(DIST_DIR)/kernel.bin: $(DIST_DIR)/kernel.elf
 	objcopy -O binary $< $@
 
 $(DIST_DIR)/boot.bin: boot.asm dirs
+	$(AS) -f bin -o $@ $<
+
+$(DIST_DIR)/stage2.bin: bootloader/stage2.asm dirs
 	$(AS) -f bin -o $@ $<
 
 $(DIST_DIR)/EFI/BOOT/BOOTX64.EFI: $(BUILD_DIR)/uefi_loader.o dirs
@@ -114,9 +121,9 @@ $(ISO_UEFI): $(DIST_DIR)/kernel.elf $(DIST_DIR)/EFI/BOOT/BOOTX64.EFI $(DIST_DIR)
 	@xorriso -as mkisofs -R -J -l -e EFI/BOOT/BOOTX64.EFI -no-emul-boot -isohybrid-gpt-basdat -o $@ $(UEFI_STAGE_DIR) >/dev/null
 	@echo "UEFI ISO image created at $@"
 
-img: $(DIST_DIR)/boot.bin $(DIST_DIR)/kernel.bin scripts/build_fat12_image.py
+img: $(DIST_DIR)/boot.bin $(DIST_DIR)/stage2.bin $(DIST_DIR)/kernel.bin scripts/build_fat12_image.py
 	@echo "Building FAT12 disk image..."
-	@python3 scripts/build_fat12_image.py --boot $(DIST_DIR)/boot.bin --kernel $(DIST_DIR)/kernel.bin --output $(DIST_DIR)/os.img
+	@python3 scripts/build_fat12_image.py --boot $(DIST_DIR)/boot.bin --stage2 $(DIST_DIR)/stage2.bin --kernel $(DIST_DIR)/kernel.bin --output $(DIST_DIR)/os.img
 	@echo "FAT12 disk image created at $(DIST_DIR)/os.img"
 
 run-iso: iso-bios

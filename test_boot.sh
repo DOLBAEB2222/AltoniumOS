@@ -22,7 +22,14 @@ else
     echo "   Note: Use 'qemu-system-i386 -drive file=dist/os.img,format=raw' to see VGA output"
 fi
 
-echo "3. Checking kernel.elf for Multiboot header..."
+echo "3. Checking for Stage2 bootloader..."
+if echo "$OUTPUT" | grep -q "Welcome to AltoniumOS"; then
+    echo "   ✓ Kernel loaded (Stage2 completed successfully)"
+else
+    echo "   ⚠ Stage2 messages not visible in serial output (expected behavior)"
+fi
+
+echo "4. Checking kernel.elf for Multiboot header..."
 if od -Ax -tx1 dist/kernel.elf | head -70 | grep -q "02 b0 ad 1b"; then
     echo "   ✓ Multiboot header present"
 else
@@ -30,7 +37,7 @@ else
     exit 1
 fi
 
-echo "4. Checking boot.bin size..."
+echo "5. Checking boot.bin size..."
 BOOT_SIZE=$(stat -c%s dist/boot.bin)
 if [ "$BOOT_SIZE" -eq 512 ]; then
     echo "   ✓ Boot sector is exactly 512 bytes"

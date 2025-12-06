@@ -1,11 +1,13 @@
 #include "../include/shell/commands.h"
 #include "../include/shell/nano.h"
+#include "../include/kernel/bootlog.h"
 #include "../include/drivers/console.h"
 #include "../disk.h"
 #include "../fat12.h"
 
 extern void halt_cpu(void);
 extern const char *get_boot_mode_name(void);
+extern void bootlog_print(void);
 
 static int fat_ready = 0;
 static uint8_t fs_io_buffer[FS_IO_BUFFER_SIZE];
@@ -137,6 +139,7 @@ void handle_help(void) {
     console_print("  nano FILE      - Text editor (Ctrl+S/Ctrl+X/Ctrl+T/Ctrl+H)\n");
     console_print("  theme [OPTION] - Switch theme (normal/blue/green) or 'list'\n");
     console_print("  fsstat         - Show filesystem/disk statistics\n");
+    console_print("  bootlog        - Show BIOS boot diagnostics\n");
     console_print("  shutdown       - Shut down the system\n");
     console_print("  help           - Display this help message\n");
 }
@@ -579,6 +582,10 @@ void handle_theme_command(const char *args) {
     console_print("\n\n");
 }
 
+void handle_bootlog_command(void) {
+    bootlog_print();
+}
+
 void execute_command(const char *cmd_line) {
     if (!cmd_line || *cmd_line == '\0') {
         return;
@@ -649,6 +656,9 @@ void execute_command(const char *cmd_line) {
     } else if (strncmp_impl(cmd_line, "shutdown", 8) == 0 && 
                (cmd_line[8] == '\0' || cmd_line[8] == ' ' || cmd_line[8] == '\n')) {
         handle_shutdown();
+    } else if (strncmp_impl(cmd_line, "bootlog", 7) == 0 && 
+               (cmd_line[7] == '\0' || cmd_line[7] == ' ' || cmd_line[7] == '\n')) {
+        handle_bootlog_command();
     } else if (strncmp_impl(cmd_line, "help", 4) == 0 && 
                (cmd_line[4] == '\0' || cmd_line[4] == ' ' || cmd_line[4] == '\n')) {
         handle_help();

@@ -1,5 +1,6 @@
-; Minimal bootloader for AltoniumOS
-; Loads kernel from disk and switches to protected mode
+; Stage 1 bootloader for AltoniumOS (BIOS)
+; Minimal 512-byte boot sector
+; Loads stage 2 bootloader from sector 1
 
 [BITS 16]
 [ORG 0x7C00]
@@ -36,35 +37,39 @@ boot_start:
     mov sp, 0x7C00
     sti
 
+    ; Setup VGA mode 3, page 0, attribute 0x07
+    mov ah, 0x00
+    mov al, 0x03
+    int 0x10
+    
+    ; Set page 0
+    mov ah, 0x05
+    xor al, al
+    int 0x10
+
     ; Print loading message
-    mov si, msg
+    mov si, msg_stage1
     call print
 
-    ; Load kernel from disk to 0x10000
-    mov ah, 0x02          ; BIOS read sectors
-    mov al, 64            ; Read 64 sectors (32KB)
+    ; Load stage 2 (512 bytes) from sector 1 to 0x7E00
+    mov ah, 0x02
+    mov al, 1             ; 1 sector (512 bytes)
     mov ch, 0             ; Cylinder 0
-    mov cl, 2             ; Starting sector 2
+    mov cl, 1             ; Sector 1
     mov dh, 0             ; Head 0
     mov dl, 0x80          ; Drive 0x80
-    mov bx, 0x1000        ; Segment
+    mov bx, 0x7E0        ; Segment (0x7E0 * 16 = 0x7E00)
     mov es, bx
-    xor bx, bx            ; Offset 0
+    xor bx, bx           ; Offset 0
     int 0x13
     jc error
 
-    ; Enable A20
-    in al, 0x92
-    or al, 2
-    out 0x92, al
+    ; Print success message
+    mov si, msg_stage1_ok
+    call print
 
-    ; Load GDT and switch to protected mode
-    cli
-    lgdt [gdt_desc]
-    mov eax, cr0
-    or eax, 1
-    mov cr0, eax
-    jmp 0x08:pm_start
+    ; Jump to stage 2 at 0x7E00
+    jmp 0x7E00
 
 error:
     mov si, err_msg
@@ -78,35 +83,20 @@ print:
     test al, al
     jz .done
     int 0x10
+    
+    ; Mirror to QEMU serial (port 0xE9)
+    mov dx, 0xE9
+    out dx, al
+    
     jmp .loop
 .done:
     ret
 
-[BITS 32]
-pm_start:
-    mov ax, 0x10
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    mov ss, ax
-    mov esp, 0x90000
-    jmp 0x10000
-
 [BITS 16]
 
-; GDT
-gdt:
-    dq 0
-    dw 0xFFFF, 0, 0x9A00, 0xCF    ; Code segment
-    dw 0xFFFF, 0, 0x9200, 0xCF    ; Data segment
-
-gdt_desc:
-    dw $ - gdt - 1
-    dd gdt
-
-msg: db 'Loading AltoniumOS...', 13, 10, 0
-err_msg: db 'Disk error!', 13, 10, 0
+msg_stage1: db 'Stage1: Loading AltoniumOS...', 13, 10, 0
+msg_stage1_ok: db 'Stage1: OK', 13, 10, 0
+err_msg: db 'Stage1: Disk error!', 13, 10, 0
 
 times 510-($-$$) db 0
 dw 0xAA55
