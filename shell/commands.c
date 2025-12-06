@@ -3,13 +3,13 @@
 #include "../include/kernel/bootlog.h"
 #include "../include/drivers/console.h"
 #include "../disk.h"
-#include "../fat12.h"
+#include "../include/fs/vfs.h"
 
 extern void halt_cpu(void);
 extern const char *get_boot_mode_name(void);
 extern void bootlog_print(void);
 
-static int fat_ready = 0;
+static int fs_ready = 0;
 static uint8_t fs_io_buffer[FS_IO_BUFFER_SIZE];
 
 static const char *os_name = "AltoniumOS";
@@ -19,44 +19,24 @@ static const char *build_date = __DATE__;
 static const char *build_time = __TIME__;
 
 void commands_init(void) {
-    fat_ready = 0;
+    fs_ready = 0;
 }
 
-int commands_is_fat_ready(void) {
-    return fat_ready;
+int commands_is_fs_ready(void) {
+    return fs_ready;
 }
 
-void commands_set_fat_ready(int ready) {
-    fat_ready = ready;
+void commands_set_fs_ready(int ready) {
+    fs_ready = ready;
 }
 
 uint8_t *commands_get_io_buffer(void) {
     return fs_io_buffer;
 }
 
-const char *fat12_error_string(int code) {
-    switch (code) {
-        case FAT12_OK: return "ok";
-        case FAT12_ERR_IO: return "io";
-        case FAT12_ERR_BAD_BPB: return "bad bpb";
-        case FAT12_ERR_NOT_FAT12: return "not fat12";
-        case FAT12_ERR_OUT_OF_RANGE: return "range";
-        case FAT12_ERR_NO_FREE_CLUSTER: return "disk full";
-        case FAT12_ERR_INVALID_NAME: return "name";
-        case FAT12_ERR_NOT_FOUND: return "not found";
-        case FAT12_ERR_NOT_DIRECTORY: return "not dir";
-        case FAT12_ERR_ALREADY_EXISTS: return "exists";
-        case FAT12_ERR_DIR_FULL: return "dir full";
-        case FAT12_ERR_BUFFER_SMALL: return "buffer";
-        case FAT12_ERR_NOT_FILE: return "not file";
-        case FAT12_ERR_NOT_INITIALIZED: return "fs offline";
-        default: return "unknown";
-    }
-}
-
 void print_fs_error(int code) {
     console_print(" (");
-    console_print(fat12_error_string(code));
+    console_print(vfs_error_string(code));
     console_print(" code ");
     print_decimal(code);
     console_print(")");
@@ -66,16 +46,16 @@ typedef struct {
     int count;
 } ls_context_t;
 
-static int ls_callback(const fat12_dir_entry_info_t *entry, void *context) {
+static int ls_callback(const vfs_dir_entry_t *entry, void *context) {
     ls_context_t *ctx = (ls_context_t *)context;
     ctx->count++;
-    if (entry->attr & FAT12_ATTR_DIRECTORY) {
+    if (entry->attr & VFS_ATTR_DIRECTORY) {
         console_print("[DIR] ");
     } else {
         console_print("      ");
     }
     console_print(entry->name);
-    if ((entry->attr & FAT12_ATTR_DIRECTORY) == 0) {
+    if ((entry->attr & VFS_ATTR_DIRECTORY) == 0) {
         console_print(" (");
         print_unsigned(entry->size);
         console_print(" bytes)");
@@ -146,8 +126,8 @@ void handle_help(void) {
 
 void handle_shutdown(void) {
     console_print("Attempting system shutdown...\n");
-    if (fat_ready) {
-        fat12_flush();
+    if (fs_ready) {
+        vfs_flush();
     }
     console_print("Halting CPU...\n");
     halt_cpu();
@@ -272,12 +252,12 @@ void handle_disk(void) {
 }
 
 void handle_ls(const char *args) {
-    if (!fat_ready) {
+    if (!fs_ready) {
         console_print("Filesystem not initialized\n");
         return;
     }
     const char *path = skip_whitespace(args);
-    char path_buf[FAT12_PATH_MAX];
+    char path_buf[VFS_PATH_MAX];
     int path_len = 0;
     if (path && *path) {
         path_len = copy_path_argument(path, path_buf, sizeof(path_buf));
@@ -290,11 +270,11 @@ void handle_ls(const char *args) {
     ctx.count = 0;
     int result;
     if (path_len > 0) {
-        result = fat12_iterate_path(path_buf, ls_callback, &ctx);
+        result = vfs_iterate_path(path_buf, ls_callback, &ctx);
     } else {
-        result = fat12_iterate_current_directory(ls_callback, &ctx);
+        result = vfs_iterate_current_directory(ls_callback, &ctx);
     }
-    if (result != FAT12_OK) {
+    if (result != VFS_OK) {
         console_print("ls failed");
         print_fs_error(result);
         console_print("\n");
@@ -306,21 +286,21 @@ void handle_ls(const char *args) {
 }
 
 void handle_pwd(void) {
-    if (!fat_ready) {
+    if (!fs_ready) {
         console_print("Filesystem not initialized\n");
         return;
     }
-    console_print(fat12_get_cwd());
+    console_print(vfs_get_cwd());
     console_print("\n");
 }
 
 void handle_cd(const char *args) {
-    if (!fat_ready) {
+    if (!fs_ready) {
         console_print("Filesystem not initialized\n");
         return;
     }
     const char *path = skip_whitespace(args);
-    char path_buf[FAT12_PATH_MAX];
+    char path_buf[VFS_PATH_MAX];
     int path_len = 0;
     if (path && *path) {
         path_len = copy_path_argument(path, path_buf, sizeof(path_buf));
@@ -333,24 +313,24 @@ void handle_cd(const char *args) {
         path_buf[0] = '/';
         path_buf[1] = '\0';
     }
-    int result = fat12_change_directory(path_buf);
-    if (result != FAT12_OK) {
+    int result = vfs_change_directory(path_buf);
+    if (result != VFS_OK) {
         console_print("cd failed");
         print_fs_error(result);
         console_print("\n");
         return;
     }
-    console_print(fat12_get_cwd());
+    console_print(vfs_get_cwd());
     console_print("\n");
 }
 
 void handle_cat(const char *args) {
-    if (!fat_ready) {
+    if (!fs_ready) {
         console_print("Filesystem not initialized\n");
         return;
     }
     const char *path = skip_whitespace(args);
-    char path_buf[FAT12_PATH_MAX];
+    char path_buf[VFS_PATH_MAX];
     int path_len = copy_path_argument(path, path_buf, sizeof(path_buf));
     if (path_len < 0) {
         console_print("cat failed (path too long)\n");
@@ -361,8 +341,8 @@ void handle_cat(const char *args) {
         return;
     }
     uint32_t size = 0;
-    int result = fat12_read_file(path_buf, fs_io_buffer, FS_IO_BUFFER_SIZE - 1, &size);
-    if (result != FAT12_OK) {
+    int result = vfs_read_file(path_buf, fs_io_buffer, FS_IO_BUFFER_SIZE - 1, &size);
+    if (result != VFS_OK) {
         console_print("cat failed");
         print_fs_error(result);
         console_print("\n");
@@ -377,18 +357,18 @@ void handle_cat(const char *args) {
 }
 
 void handle_touch(const char *args) {
-    if (!fat_ready) {
+    if (!fs_ready) {
         console_print("Filesystem not initialized\n");
         return;
     }
     const char *cursor = args;
-    char name_buf[FAT12_PATH_MAX];
+    char name_buf[VFS_PATH_MAX];
     if (read_token(&cursor, name_buf, sizeof(name_buf)) == 0) {
         console_print("Usage: touch NAME\n");
         return;
     }
-    int result = fat12_write_file(name_buf, 0, 0);
-    if (result != FAT12_OK) {
+    int result = vfs_write_file(name_buf, 0, 0);
+    if (result != VFS_OK) {
         console_print("touch failed");
         print_fs_error(result);
         console_print("\n");
@@ -400,12 +380,12 @@ void handle_touch(const char *args) {
 }
 
 void handle_write_command(const char *args) {
-    if (!fat_ready) {
+    if (!fs_ready) {
         console_print("Filesystem not initialized\n");
         return;
     }
     const char *cursor = args;
-    char name_buf[FAT12_PATH_MAX];
+    char name_buf[VFS_PATH_MAX];
     if (read_token(&cursor, name_buf, sizeof(name_buf)) == 0) {
         console_print("Usage: write NAME TEXT\n");
         return;
@@ -422,8 +402,8 @@ void handle_write_command(const char *args) {
             length++;
         }
     }
-    int result = fat12_write_file(name_buf, fs_io_buffer, length);
-    if (result != FAT12_OK) {
+    int result = vfs_write_file(name_buf, fs_io_buffer, length);
+    if (result != VFS_OK) {
         console_print("write failed");
         print_fs_error(result);
         console_print("\n");
@@ -435,18 +415,18 @@ void handle_write_command(const char *args) {
 }
 
 void handle_mkdir_command(const char *args) {
-    if (!fat_ready) {
+    if (!fs_ready) {
         console_print("Filesystem not initialized\n");
         return;
     }
     const char *cursor = args;
-    char name_buf[FAT12_PATH_MAX];
+    char name_buf[VFS_PATH_MAX];
     if (read_token(&cursor, name_buf, sizeof(name_buf)) == 0) {
         console_print("Usage: mkdir NAME\n");
         return;
     }
-    int result = fat12_create_directory(name_buf);
-    if (result != FAT12_OK) {
+    int result = vfs_create_directory(name_buf);
+    if (result != VFS_OK) {
         console_print("mkdir failed");
         print_fs_error(result);
         console_print("\n");
@@ -456,18 +436,18 @@ void handle_mkdir_command(const char *args) {
 }
 
 void handle_rm_command(const char *args) {
-    if (!fat_ready) {
+    if (!fs_ready) {
         console_print("Filesystem not initialized\n");
         return;
     }
     const char *cursor = args;
-    char name_buf[FAT12_PATH_MAX];
+    char name_buf[VFS_PATH_MAX];
     if (read_token(&cursor, name_buf, sizeof(name_buf)) == 0) {
         console_print("Usage: rm NAME\n");
         return;
     }
-    int result = fat12_delete_file(name_buf);
-    if (result != FAT12_OK) {
+    int result = vfs_delete_file(name_buf);
+    if (result != VFS_OK) {
         console_print("rm failed");
         print_fs_error(result);
         console_print("\n");
@@ -477,13 +457,13 @@ void handle_rm_command(const char *args) {
 }
 
 void handle_nano_command(const char *args) {
-    if (!fat_ready) {
+    if (!fs_ready) {
         console_print("Filesystem not initialized\n");
         return;
     }
     
     const char *cursor = args;
-    char filename_buf[FAT12_PATH_MAX];
+    char filename_buf[VFS_PATH_MAX];
     if (read_token(&cursor, filename_buf, sizeof(filename_buf)) == 0) {
         console_print("Usage: nano FILENAME\n");
         return;
@@ -493,6 +473,40 @@ void handle_nano_command(const char *args) {
 }
 
 void handle_fsstat_command(void) {
+    if (fs_ready) {
+        vfs_fs_info_t fs_info;
+        if (vfs_get_fs_info(&fs_info) == VFS_OK) {
+            console_print("Filesystem Information:\n");
+            console_print("  Type:               ");
+            console_print(fs_info.name);
+            console_print("\n");
+            console_print("  Total size:         ");
+            print_unsigned(fs_info.total_size);
+            console_print(" bytes\n");
+            console_print("  Free size:          ");
+            print_unsigned(fs_info.free_size);
+            console_print(" bytes\n");
+            console_print("  Block size:         ");
+            print_unsigned(fs_info.block_size);
+            console_print(" bytes\n");
+            console_print("  Total blocks:       ");
+            print_unsigned(fs_info.total_blocks);
+            console_print("\n");
+            console_print("  Free blocks:        ");
+            print_unsigned(fs_info.free_blocks);
+            console_print("\n");
+            if (fs_info.total_inodes > 0) {
+                console_print("  Total inodes:       ");
+                print_unsigned(fs_info.total_inodes);
+                console_print("\n");
+                console_print("  Free inodes:        ");
+                print_unsigned(fs_info.free_inodes);
+                console_print("\n");
+            }
+            console_print("\n");
+        }
+    }
+    
     disk_stats_t disk_stats;
     disk_get_stats(&disk_stats);
     

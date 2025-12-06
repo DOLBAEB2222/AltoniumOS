@@ -5,7 +5,7 @@
 #include "../include/shell/prompt.h"
 #include "../include/shell/commands.h"
 #include "../disk.h"
-#include "../fat12.h"
+#include "../include/fs/vfs.h"
 
 extern uint32_t multiboot_magic_storage;
 extern uint32_t multiboot_info_ptr_storage;
@@ -109,19 +109,26 @@ void kernel_main(void) {
     }
     
     if (disk_result == 0) {
-        console_print("Initializing FAT12 filesystem... ");
-        int fat_result = fat12_init(0);
-        if (fat_result != FAT12_OK) {
+        vfs_init();
+        console_print("Detecting filesystem type... ");
+        fs_type_t fs_type = vfs_detect_fs_type(0);
+        console_print(vfs_get_fs_type_name(fs_type));
+        console_print("\n");
+        console_print("Mounting filesystem... ");
+        int mount_result = vfs_mount(0);
+        if (mount_result != VFS_OK) {
             console_print("FAILED (");
-            console_print(fat12_error_string(fat_result));
+            console_print(vfs_error_string(mount_result));
             console_print(" code ");
-            print_decimal(fat_result);
+            print_decimal(mount_result);
             console_print(")\n");
         } else {
             console_print("OK\n");
-            commands_set_fat_ready(1);
-            console_print("Mounted volume at ");
-            console_print(fat12_get_cwd());
+            commands_set_fs_ready(1);
+            console_print("Mounted ");
+            console_print(vfs_get_fs_type_name(fs_type));
+            console_print(" volume at ");
+            console_print(vfs_get_cwd());
             console_print("\n");
         }
     }

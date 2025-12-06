@@ -2,7 +2,7 @@
 #define SHELL_NANO_H
 
 #include "../lib/string.h"
-#include "../../fat12.h"
+#include "../fs/vfs.h"
 
 #define NANO_MAX_LINES 1000
 #define NANO_MAX_LINE_LENGTH 200
@@ -16,7 +16,7 @@
 
 typedef struct {
     int editor_active;
-    char filename[FAT12_PATH_MAX];
+    char filename[VFS_PATH_MAX];
     char lines[NANO_MAX_LINES][NANO_MAX_LINE_LENGTH];
     int line_lengths[NANO_MAX_LINES];
     int total_lines;

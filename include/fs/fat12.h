@@ -1,7 +1,8 @@
 #ifndef FAT12_H
 #define FAT12_H
 
-#include "disk.h"
+#include "../../disk.h"
+#include "vfs.h"
 
 #define FAT12_ATTR_READ_ONLY 0x01
 #define FAT12_ATTR_HIDDEN    0x02
@@ -47,5 +48,7 @@ int fat12_write_file(const char *name, const uint8_t *data, uint32_t size);
 int fat12_create_directory(const char *name);
 int fat12_delete_file(const char *name);
 int fat12_flush(void);
+
+vfs_operations_t fat12_get_vfs_ops(void);
 
 #endif /* FAT12_H */
