@@ -12,6 +12,9 @@ This OS includes the following console commands:
 - **bootlog** – Display detailed BIOS boot diagnostics (EDD support, boot method, memory, geometry)
 - **disk** – Test raw disk I/O and show sector diagnostics
 - **storage** – List detected storage controllers and their capabilities (PCI enumeration results)
+- **beep <F> <T>** – Play a single tone (frequency in Hz for F milliseconds T)
+- **beep melody NOTE:MS,...** – Play a melody (e.g., `beep melody C4:250,E4:250,G4:500`)
+- **beep piano** – Enter interactive piano mode (press letter keys to play, ESC to exit)
 - **ls [PATH]** – List files and directories from the current working directory or a supplied path
 - **dir [PATH]** – Alias for ls, list directory contents
 - **pwd** – Display the current working directory

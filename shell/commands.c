@@ -3,6 +3,7 @@
 #include "../include/kernel/bootlog.h"
 #include "../include/drivers/console.h"
 #include "../include/drivers/storage/block_device.h"
+#include "../include/drivers/pcspeaker.h"
 #include "../disk.h"
 #include "../fat12.h"
 
@@ -153,6 +154,9 @@ void handle_help(void) {
     console_print("  fetch          - Print OS and system information\n");
     console_print("  disk           - Test disk I/O and show disk information\n");
     console_print("  storage        - List detected storage controllers\n");
+    console_print("  beep <F> <T>   - Play a single tone (frequency in Hz, duration in ms)\n");
+    console_print("  beep melody ...- Play a melody (e.g., C4:250,E4:250,G4:500)\n");
+    console_print("  beep piano     - Enter interactive piano mode\n");
     console_print("  ls [PATH]      - List files in the current or given directory\n");
     console_print("  dir [PATH]     - Alias for ls\n");
     console_print("  pwd            - Show current directory\n");
@@ -638,6 +642,135 @@ void handle_storage_command(void) {
     }
 }
 
+void handle_beep_command(const char *args) {
+    const char *cursor = args;
+    
+    if (!cursor || !*cursor) {
+        console_print("Usage: beep <freq> <ms> | beep melody NOTE:MS,... | beep piano\n");
+        return;
+    }
+    
+    char mode[16];
+    int token_len = read_token(&cursor, mode, sizeof(mode));
+    
+    if (token_len <= 0) {
+        console_print("Usage: beep <freq> <ms> | beep melody NOTE:MS,... | beep piano\n");
+        return;
+    }
+    
+    if (strcmp_impl(mode, "piano") == 0) {
+        pcspeaker_piano_mode();
+        return;
+    }
+    
+    if (strcmp_impl(mode, "melody") == 0) {
+        const char *melody_str = skip_whitespace(cursor);
+        if (!melody_str || !*melody_str) {
+            console_print("Usage: beep melody NOTE:MS,NOTE:MS,...\n");
+            return;
+        }
+        
+        note_event_t notes[32];
+        int note_count = 0;
+        char token[16];
+        
+        const char *p = melody_str;
+        while (*p && note_count < 32) {
+            int i = 0;
+            while (*p && *p != ',' && *p != ' ' && i < sizeof(token) - 1) {
+                token[i++] = *p++;
+            }
+            token[i] = '\0';
+            
+            while (*p == ' ' || *p == ',') p++;
+            
+            if (i > 0) {
+                char *colon = token;
+                while (*colon && *colon != ':') colon++;
+                
+                if (*colon == ':') {
+                    *colon = '\0';
+                    char *note_str = token;
+                    char *duration_str = colon + 1;
+                    
+                    notes[note_count].duration_ms = 0;
+                    char *d = duration_str;
+                    while (*d >= '0' && *d <= '9') {
+                        notes[note_count].duration_ms = notes[note_count].duration_ms * 10 + (*d - '0');
+                        d++;
+                    }
+                    
+                    uint16_t frequency = 0;
+                    pcspeaker_note_to_frequency(note_str, &frequency);
+                    
+                    if (frequency > 0) {
+                        strcpy_impl(notes[note_count].note, note_str);
+                        notes[note_count].frequency = frequency;
+                        note_count++;
+                    }
+                }
+            }
+        }
+        
+        if (note_count > 0) {
+            console_print("Playing melody with ");
+            print_decimal(note_count);
+            console_print(" notes: ");
+            for (int i = 0; i < note_count; i++) {
+                if (i > 0) console_print(", ");
+                console_print(notes[i].note);
+            }
+            console_print("\n");
+            
+            pcspeaker_play_melody(notes, note_count);
+        } else {
+            console_print("No valid notes found\n");
+        }
+        return;
+    }
+    
+    
+    int freq = 0;
+    for (int i = 0; i < token_len; i++) {
+        if (mode[i] >= '0' && mode[i] <= '9') {
+            freq = freq * 10 + (mode[i] - '0');
+        }
+    }
+    
+    if (freq == 0) {
+        console_print("Usage: beep <freq> <ms> | beep melody NOTE:MS,... | beep piano\n");
+        return;
+    }
+    
+    cursor = skip_whitespace(cursor);
+    if (!cursor || !*cursor) {
+        console_print("Usage: beep <freq> <ms>\n");
+        return;
+    }
+    
+    char duration_str[16];
+    token_len = read_token(&cursor, duration_str, sizeof(duration_str));
+    if (token_len <= 0) {
+        console_print("Usage: beep <freq> <ms>\n");
+        return;
+    }
+    
+    int duration = 0;
+    for (int i = 0; i < token_len; i++) {
+        if (duration_str[i] >= '0' && duration_str[i] <= '9') {
+            duration = duration * 10 + (duration_str[i] - '0');
+        }
+    }
+    
+    console_print("Beep: frequency=");
+    print_decimal(freq);
+    console_print("Hz, duration=");
+    print_decimal(duration);
+    console_print("ms\n");
+    
+    pcspeaker_beep((uint16_t)freq, (uint16_t)duration);
+}
+
 void execute_command(const char *cmd_line) {
     if (!cmd_line || *cmd_line == '\0') {
         return;
@@ -714,6 +847,9 @@ void execute_command(const char *cmd_line) {
     } else if (strncmp_impl(cmd_line, "storage", 7) == 0 && 
                (cmd_line[7] == '\0' || cmd_line[7] == ' ' || cmd_line[7] == '\n')) {
         handle_storage_command();
+    } else if (strncmp_impl(cmd_line, "beep ", 5) == 0) {
+        const char *args = cmd_line + 5;
+        handle_beep_command(args);
     } else if (strncmp_impl(cmd_line, "help", 4) == 0 && 
                (cmd_line[4] == '\0' || cmd_line[4] == ' ' || cmd_line[4] == '\n')) {
         handle_help();

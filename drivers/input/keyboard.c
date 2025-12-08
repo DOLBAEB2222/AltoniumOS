@@ -123,3 +123,29 @@ void handle_console_scancode(uint16_t scancode) {
 int keyboard_is_ctrl_pressed(void) {
     return global_keyboard_state.ctrl_pressed;
 }
+
+int keyboard_has_data(void) {
+    return keyboard_ready();
+}
+
+uint8_t keyboard_get_scancode(void) {
+    if (!keyboard_ready()) {
+        return 0;
+    }
+    return inb(0x60);
+}
+
+uint8_t keyboard_convert_scancode(uint8_t scancode) {
+    if (scancode == 0x01) {
+        return KEY_ESC;
+    }
+    if (scancode & 0x80) {
+        return 0;
+    }
+    
+    char ascii = scancode_to_ascii(scancode);
+    if (ascii >= 0x20 && ascii <= 0x7E) {
+        return ascii;
+    }
+    return 0;
+}
