@@ -21,6 +21,9 @@ This OS includes the following console commands:
 - **rm FILE** – Delete a file from the current working directory
 - **nano FILE** – Simple text editor with full-screen editing (Ctrl+S to save, Ctrl+X to exit)
 - **theme [OPTION]** – Switch color theme (normal/blue/green) or 'list' to show available themes
+- **fsstat** – Show filesystem and disk I/O statistics
+- **bootlog** – Display BIOS boot diagnostics
+- **logcat [file]** – Show in-memory kernel log or persisted boot log from `/var/log/boot.log`
 - **shutdown** – Gracefully shut down the system (attempts ACPI power-off via port 0x604)
 - **help** – Display all available commands and usage hints
 
@@ -67,6 +70,23 @@ AltoniumOS includes a theme system that allows you to customize the console appe
   ```
 
 - **Nano editor integration:** The current theme is displayed in the nano status bar and automatically applied to all nano editor sessions
+
+## Init Manager & Logging
+
+AltoniumOS now boots through a lightweight init manager (similar in spirit to runit/OpenRC) that ensures drivers and subsystems come up in a deterministic order. Core services are defined in `init/manager.c` and registered inside `kernel/main.c`:
+
+1. **console** – clears/initializes the VGA text console
+2. **keyboard** – enables PS/2 keyboard input once the console is live
+3. **bootlog** – exposes BIOS boot diagnostics from the bootloader
+4. **disk** – brings up the ATA PIO driver and performs the self-test
+5. **filesystem** – mounts the FAT12 volume and marks shell commands as filesystem-ready
+6. **shell** – final interactive prompt once all dependencies succeed
+
+Each service declares dependencies plus a failure policy (halt on failure for critical pieces such as the console/shell, warn-and-continue for optional pieces). Adding new services (USB, ACPI, etc.) only requires providing a start callback and dependency list.
+
+The kernel logging subsystem records structured log entries (DEBUG/INFO/WARN/ERROR) in an early-boot ring buffer and flushes them to `/var/log/boot.log` once the filesystem is online. Use the new `logcat` shell command to inspect the in-memory buffer after boot or run `logcat file` to read the persisted log. Disk images now ship with `/VAR/LOG` pre-created so persistence works even before user land touches the filesystem.
+
+📘 See `docs/architecture/init_and_logging.md` for a deeper dive and extension guide.
 
 ## Building
 

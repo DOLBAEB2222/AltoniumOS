@@ -165,6 +165,21 @@ def build_image(boot_path: str, kernel_path: str, output_path: str, stage2_path:
     write_cluster(image, docs_cluster, docs_buffer)
     add_root_entry("DOCS", 0x10, docs_cluster, 0)
 
+    var_cluster = allocator(1)[0]
+    var_buffer = bytearray(CLUSTER_SIZE)
+    var_buffer[0:32] = build_dir_entry(dot_name, 0x10, var_cluster, 0)
+    var_buffer[32:64] = build_dir_entry(dotdot_name, 0x10, 0, 0)
+
+    log_cluster = allocator(1)[0]
+    log_buffer = bytearray(CLUSTER_SIZE)
+    log_buffer[0:32] = build_dir_entry(dot_name, 0x10, log_cluster, 0)
+    log_buffer[32:64] = build_dir_entry(dotdot_name, 0x10, var_cluster, 0)
+    write_cluster(image, log_cluster, log_buffer)
+
+    var_buffer[64:96] = build_dir_entry(to_short_name("LOG"), 0x10, log_cluster, 0)
+    write_cluster(image, var_cluster, var_buffer)
+    add_root_entry("VAR", 0x10, var_cluster, 0)
+
     # Write FATs
     fat_offset = RESERVED_SECTORS * BYTES_PER_SECTOR
     image[fat_offset:fat_offset + len(fat_primary)] = fat_primary

@@ -1,6 +1,7 @@
 #include "../include/shell/commands.h"
 #include "../include/shell/nano.h"
 #include "../include/kernel/bootlog.h"
+#include "../include/kernel/log.h"
 #include "../include/drivers/console.h"
 #include "../disk.h"
 #include "../fat12.h"
@@ -140,6 +141,7 @@ void handle_help(void) {
     console_print("  theme [OPTION] - Switch theme (normal/blue/green) or 'list'\n");
     console_print("  fsstat         - Show filesystem/disk statistics\n");
     console_print("  bootlog        - Show BIOS boot diagnostics\n");
+    console_print("  logcat [file]  - Show in-memory log or persisted boot log\n");
     console_print("  shutdown       - Shut down the system\n");
     console_print("  help           - Display this help message\n");
 }
@@ -586,6 +588,43 @@ void handle_bootlog_command(void) {
     bootlog_print();
 }
 
+void handle_logcat_command(const char *args) {
+    const char *cursor = args;
+    char option_buf[32];
+    
+    if (read_token(&cursor, option_buf, sizeof(option_buf)) > 0) {
+        if (strcmp_impl(option_buf, "file") == 0) {
+            if (!commands_is_fat_ready()) {
+                console_print("Filesystem not initialized\n");
+                return;
+            }
+            
+            uint8_t *buffer = commands_get_io_buffer();
+            uint32_t size = 0;
+            int result = fat12_read_file("/VAR/LOG/BOOT.LOG", buffer, FS_IO_BUFFER_SIZE - 1, &size);
+            
+            if (result != FAT12_OK) {
+                console_print("Failed to read log file");
+                print_fs_error(result);
+                console_print("\n");
+                return;
+            }
+            
+            console_print("=== Boot Log from File ===\n");
+            for (uint32_t i = 0; i < size; i++) {
+                console_putchar((char)buffer[i]);
+            }
+            if (size == 0 || buffer[size - 1] != '\n') {
+                console_print("\n");
+            }
+            console_print("=== End of File ===\n");
+            return;
+        }
+    }
+    
+    klog_print_buffer();
+}
+
 void execute_command(const char *cmd_line) {
     if (!cmd_line || *cmd_line == '\0') {
         return;
@@ -659,6 +698,10 @@ void execute_command(const char *cmd_line) {
     } else if (strncmp_impl(cmd_line, "bootlog", 7) == 0 && 
                (cmd_line[7] == '\0' || cmd_line[7] == ' ' || cmd_line[7] == '\n')) {
         handle_bootlog_command();
+    } else if (strncmp_impl(cmd_line, "logcat", 6) == 0 &&
+               (cmd_line[6] == '\0' || cmd_line[6] == ' ' || cmd_line[6] == '\n')) {
+        const char *args = cmd_line + 6;
+        handle_logcat_command(args);
     } else if (strncmp_impl(cmd_line, "help", 4) == 0 && 
                (cmd_line[4] == '\0' || cmd_line[4] == ' ' || cmd_line[4] == '\n')) {
         handle_help();

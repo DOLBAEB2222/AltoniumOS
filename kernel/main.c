@@ -1,5 +1,7 @@
 #include "../include/kernel/main.h"
 #include "../include/kernel/bootlog.h"
+#include "../include/kernel/log.h"
+#include "../include/init/manager.h"
 #include "../include/drivers/console.h"
 #include "../include/drivers/keyboard.h"
 #include "../include/shell/prompt.h"
@@ -11,6 +13,7 @@ extern uint32_t multiboot_magic_storage;
 extern uint32_t multiboot_info_ptr_storage;
 
 static int boot_mode = BOOT_MODE_UNKNOWN;
+static init_manager_t init_manager;
 
 void detect_boot_mode(void) {
     boot_mode = BOOT_MODE_BIOS;
@@ -38,95 +41,126 @@ const char *get_boot_mode_name(void) {
     }
 }
 
+static int service_console_start(service_descriptor_t *svc) {
+    (void)svc;
+    console_init(console_get_state());
+    vga_clear();
+    KLOG_INFO("console", "VGA console initialized");
+    return 0;
+}
+
+static int service_keyboard_start(service_descriptor_t *svc) {
+    (void)svc;
+    keyboard_init(keyboard_get_state());
+    KLOG_INFO("keyboard", "PS/2 keyboard driver initialized");
+    return 0;
+}
+
+static int service_bootlog_start(service_descriptor_t *svc) {
+    (void)svc;
+    bootlog_init();
+    KLOG_INFO("bootlog", "Boot diagnostics initialized");
+    return 0;
+}
+
+static int service_disk_start(service_descriptor_t *svc) {
+    (void)svc;
+    int result = disk_init();
+    if (result != 0) {
+        KLOG_ERROR("disk", "Disk initialization failed");
+        return result;
+    }
+    
+    KLOG_INFO("disk", "Disk driver initialized");
+    
+    result = disk_self_test();
+    if (result != 0) {
+        KLOG_WARN("disk", "Disk self-test failed");
+        return result;
+    }
+    
+    KLOG_INFO("disk", "Disk self-test passed");
+    return 0;
+}
+
+static int service_filesystem_start(service_descriptor_t *svc) {
+    (void)svc;
+    int result = fat12_init(0);
+    if (result != FAT12_OK) {
+        KLOG_ERROR("filesystem", "FAT12 initialization failed");
+        return result;
+    }
+    
+    commands_set_fat_ready(1);
+    KLOG_INFO("filesystem", "FAT12 filesystem mounted");
+    
+    klog_set_filesystem_ready(1);
+    
+    return 0;
+}
+
+static int service_shell_start(service_descriptor_t *svc) {
+    (void)svc;
+    commands_init();
+    KLOG_INFO("shell", "Shell initialized");
+    return 0;
+}
+
+static void register_core_services(void) {
+    const char *no_deps[] = { 0 };
+    const char *console_deps[] = { "console", 0 };
+    const char *keyboard_deps[] = { "console", 0 };
+    const char *disk_deps[] = { "console", "bootlog", 0 };
+    const char *fs_deps[] = { "disk", 0 };
+    const char *shell_deps[] = { "console", "keyboard", "filesystem", 0 };
+    
+    init_manager_register_service(&init_manager, "console", service_console_start, 
+                                  no_deps, 0, FAILURE_POLICY_HALT);
+    
+    init_manager_register_service(&init_manager, "keyboard", service_keyboard_start,
+                                  keyboard_deps, 1, FAILURE_POLICY_WARN);
+    
+    init_manager_register_service(&init_manager, "bootlog", service_bootlog_start,
+                                  console_deps, 1, FAILURE_POLICY_WARN);
+    
+    init_manager_register_service(&init_manager, "disk", service_disk_start,
+                                  disk_deps, 2, FAILURE_POLICY_WARN);
+    
+    init_manager_register_service(&init_manager, "filesystem", service_filesystem_start,
+                                  fs_deps, 1, FAILURE_POLICY_WARN);
+    
+    init_manager_register_service(&init_manager, "shell", service_shell_start,
+                                  shell_deps, 3, FAILURE_POLICY_HALT);
+}
+
 void kernel_main(void) {
     detect_boot_mode();
-    bootlog_init();
-    vga_clear();
+    
+    klog_init();
+    KLOG_INFO("kernel", "AltoniumOS 1.0.0 starting");
+    
+    init_manager_init(&init_manager);
+    register_core_services();
+    
+    KLOG_INFO("kernel", "Starting init system");
+    int result = init_manager_start_all(&init_manager);
+    
     console_print("Welcome to AltoniumOS 1.0.0\n");
-
     console_print("Boot mode: ");
     console_print(get_boot_mode_name());
+    console_print("\n\n");
+    
+    if (result != 0) {
+        console_print("Init system encountered errors\n\n");
+        KLOG_ERROR("kernel", "Init system failed");
+    }
+    
+    console_print("Mounted volume at ");
+    console_print(fat12_get_cwd());
     console_print("\n");
-    
-    console_print("Initializing disk driver... ");
-    int disk_result = disk_init();
-    if (disk_result != 0) {
-        console_print("FAILED (error ");
-        if (disk_result < 0) {
-            console_print("-");
-            disk_result = -disk_result;
-        }
-        char error_str[16];
-        int pos = 0;
-        if (disk_result == 0) {
-            error_str[pos++] = '0';
-        } else {
-            char temp[16];
-            int temp_pos = 0;
-            while (disk_result > 0) {
-                temp[temp_pos++] = '0' + (disk_result % 10);
-                disk_result /= 10;
-            }
-            for (int i = temp_pos - 1; i >= 0; i--) {
-                error_str[pos++] = temp[i];
-            }
-        }
-        error_str[pos] = '\0';
-        console_print(error_str);
-        console_print(")\n");
-    } else {
-        console_print("OK\n");
-        
-        console_print("Running disk self-test... ");
-        int test_result = disk_self_test();
-        if (test_result != 0) {
-            console_print("FAILED (error ");
-            if (test_result < 0) {
-                console_print("-");
-                test_result = -test_result;
-            }
-            char error_str[16];
-            int pos = 0;
-            if (test_result == 0) {
-                error_str[pos++] = '0';
-            } else {
-                char temp[16];
-                int temp_pos = 0;
-                while (test_result > 0) {
-                    temp[temp_pos++] = '0' + (test_result % 10);
-                    test_result /= 10;
-                }
-                for (int i = temp_pos - 1; i >= 0; i--) {
-                    error_str[pos++] = temp[i];
-                }
-            }
-            error_str[pos] = '\0';
-            console_print(error_str);
-            console_print(")\n");
-        } else {
-            console_print("OK\n");
-        }
-    }
-    
-    if (disk_result == 0) {
-        console_print("Initializing FAT12 filesystem... ");
-        int fat_result = fat12_init(0);
-        if (fat_result != FAT12_OK) {
-            console_print("FAILED (");
-            console_print(fat12_error_string(fat_result));
-            console_print(" code ");
-            print_decimal(fat_result);
-            console_print(")\n");
-        } else {
-            console_print("OK\n");
-            commands_set_fat_ready(1);
-            console_print("Mounted volume at ");
-            console_print(fat12_get_cwd());
-            console_print("\n");
-        }
-    }
-    
     console_print("Type 'help' for available commands\n\n");
+    
+    KLOG_INFO("kernel", "Entering main loop");
     
     while (1) {
         prompt_reset();
