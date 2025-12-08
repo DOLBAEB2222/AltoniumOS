@@ -8,7 +8,8 @@ This OS includes the following console commands:
 
 - **clear** – Clear the VGA text buffer and reset the screen
 - **echo** – Write text to the console
-- **fetch** – Display OS and system information (name, version, architecture, build date/time)
+- **fetch** – Display OS and system information (name, version, architecture, build date/time, boot mode, detected memory)
+- **bootlog** – Display detailed BIOS boot diagnostics (EDD support, boot method, memory, geometry)
 - **disk** – Test raw disk I/O and show sector diagnostics
 - **ls [PATH]** – List files and directories from the current working directory or a supplied path
 - **dir [PATH]** – Alias for ls, list directory contents
@@ -158,6 +159,41 @@ On a physical machine, the firmware will automatically detect whether you're boo
 - Detailed error messages with wait-for-key on failures (prevents unexpected reboots)
 - Tested on AMD E1-7010 systems and OVMF firmware
 - See `UEFI_BOOT_GUIDE.md` for detailed troubleshooting information
+
+### BIOS Boot Troubleshooting
+
+For systems that experience BIOS boot issues (such as Lenovo 110-15ACL or systems with Alder Lake processors), the OS includes enhanced boot diagnostics and a safe mode entry:
+
+**Boot Diagnostics:**
+The `bootlog` command displays detailed BIOS boot information:
+```
+bootlog
+Boot diagnostics:
+  Extensions:    EDD supported
+  Boot method:   EDD
+  INT13 status:  0x00
+  Retry count:   0
+  Memory:        8192 MB
+  Cylinders:     1024
+  Heads:         16
+  Sectors/track: 63
+  BIOS vendor:   [vendor string]
+```
+
+**Safe BIOS Mode:**
+If you experience disk read errors on problematic hardware, use the "Safe BIOS Mode" GRUB entry:
+- Select "AltoniumOS - BIOS Safe Mode (No EDD)" from the GRUB menu
+- This disables INT 13h extensions and uses traditional CHS addressing
+- Useful for older BIOS implementations or firmware bugs related to EDD
+
+**EDD (Enhanced Disk Drive) Support:**
+- Modern systems use INT 13h extensions (AH=42h) for larger disk support
+- Older systems or problematic BIOS implementations fall back to CHS addressing
+- The bootlog shows which path was used and any error codes encountered
+- If "Boot method: Error" appears, check BIOS settings for disk controllers or try Safe BIOS Mode
+
+**Memory Detection:**
+The kernel detects system memory during boot using INT 15h E820 calls and reports the total available memory (up to 32 GB with PAE support in future versions).
 
 ### Testing Disk I/O
 

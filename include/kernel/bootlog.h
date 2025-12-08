@@ -11,12 +11,16 @@ typedef struct {
     uint32_t magic;           /* 0x424F4F54 */
     uint8_t int13_extensions; /* 1 = EDD supported, 0 = fallback to CHS */
     uint8_t int13_status;     /* Status from last INT 13h call */
-    uint16_t reserved1;
+    uint8_t boot_method;      /* 0 = CHS, 1 = EDD, 2 = error */
+    uint8_t retry_count;      /* Number of disk read retries */
     
     /* Drive geometry (from INT 13h, AH=08h) */
     uint16_t cylinders;
     uint8_t heads;
     uint8_t sectors_per_track;
+    
+    /* Memory size in MB (from INT 15h E820) */
+    uint32_t memory_mb;
     
     /* BIOS vendor string (up to 32 chars, NUL-terminated) */
     char bios_vendor[32];
@@ -24,7 +28,7 @@ typedef struct {
     /* Status string (up to 64 chars, NUL-terminated) */
     char status_string[64];
     
-    uint8_t reserved[64];  /* Padding for future use */
+    uint8_t reserved[56];  /* Padding for future use */
 } bootlog_data_t;
 
 /* Global bootlog data for kernel access */

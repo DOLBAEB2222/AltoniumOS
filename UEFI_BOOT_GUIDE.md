@@ -410,6 +410,52 @@ If you see memory-related errors:
 - [ ] Commands work (help, clear, echo, fetch)
 - [ ] No random reboots
 
+## BIOS Boot Issues and Safe Mode
+
+For systems that have problems with BIOS boot (particularly when using INT 13h extensions for disk access):
+
+### Symptoms
+
+- "FATAL: Disk read error during boot" message on real hardware
+- Boots fine in QEMU but fails on physical machines
+- Lenovo 110-15ACL or Alder Lake systems with BIOS hang
+
+### Diagnosis
+
+Use the `bootlog` command to see boot diagnostics:
+
+```
+bootlog
+Boot diagnostics:
+  Extensions:    EDD supported
+  Boot method:   EDD (or CHS, or Error)
+  INT13 status:  0x00 (success) / error code
+  Retry count:   Number of retries
+  Memory:        Total MB detected
+```
+
+### Solutions
+
+1. **If INT13 status shows an error:**
+   - Try Safe BIOS Mode: Select "AltoniumOS - BIOS Safe Mode (No EDD)" from GRUB
+   - This uses CHS addressing instead of INT 13h extensions
+   - Suitable for older BIOS or firmware with EDD bugs
+
+2. **Update BIOS/UEFI firmware:**
+   - Check manufacturer website for latest version
+   - BIOS bugs are firmware issues beyond OS control
+
+3. **BIOS Settings:**
+   - Disable "Fast Boot" if enabled
+   - Enable/disable AHCI mode (try both)
+   - Update SATA controller firmware if available
+   - Check for "EDD Support" setting (disable if problematic)
+
+4. **Hybrid ISO advantages:**
+   - Single ISO boots both BIOS and UEFI
+   - UEFI path is generally more reliable on modern systems
+   - Try UEFI boot if BIOS fails
+
 ## Advanced Debugging
 
 ### Enable UEFI Debug Messages

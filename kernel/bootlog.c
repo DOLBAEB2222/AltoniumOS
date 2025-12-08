@@ -12,9 +12,12 @@ void bootlog_init(void) {
         bootlog_data->magic = BOOTLOG_MAGIC;
         bootlog_data->int13_extensions = 0;
         bootlog_data->int13_status = 0;
+        bootlog_data->boot_method = 0;
+        bootlog_data->retry_count = 0;
         bootlog_data->cylinders = 0;
         bootlog_data->heads = 0;
         bootlog_data->sectors_per_track = 0;
+        bootlog_data->memory_mb = 0;
         bootlog_data->bios_vendor[0] = '\0';
         bootlog_data->status_string[0] = '\0';
     }
@@ -33,6 +36,15 @@ void bootlog_print(void) {
         console_print("CHS fallback\n");
     }
     
+    console_print("  Boot method:   ");
+    switch (bootlog_data->boot_method) {
+        case 0: console_print("CHS"); break;
+        case 1: console_print("EDD"); break;
+        case 2: console_print("Error"); break;
+        default: console_print("Unknown"); break;
+    }
+    console_print("\n");
+    
     console_print("  INT13 status:  0x");
     if (bootlog_data->int13_status < 16) {
         console_print("0");
@@ -44,17 +56,60 @@ void bootlog_print(void) {
     console_print(hex);
     console_print("\n");
     
+    console_print("  Retry count:   ");
+    unsigned int retry = bootlog_data->retry_count;
+    char buf[16];
+    int i = 0;
+    if (retry == 0) {
+        buf[i++] = '0';
+    } else {
+        char temp[16];
+        int ti = 0;
+        while (retry > 0) {
+            temp[ti++] = '0' + (retry % 10);
+            retry /= 10;
+        }
+        for (int j = ti - 1; j >= 0; j--) {
+            buf[i++] = temp[j];
+        }
+    }
+    buf[i] = '\0';
+    console_print(buf);
+    console_print("\n");
+    
     if (bootlog_data->status_string[0] != '\0') {
         console_print("  Status:        ");
         console_print(bootlog_data->status_string);
         console_print("\n");
     }
     
+    if (bootlog_data->memory_mb > 0) {
+        console_print("  Memory:        ");
+        unsigned int mem = bootlog_data->memory_mb;
+        buf[0] = 0;
+        i = 0;
+        if (mem == 0) {
+            buf[i++] = '0';
+        } else {
+            char temp[16];
+            int ti = 0;
+            while (mem > 0) {
+                temp[ti++] = '0' + (mem % 10);
+                mem /= 10;
+            }
+            for (int j = ti - 1; j >= 0; j--) {
+                buf[i++] = temp[j];
+            }
+        }
+        buf[i] = '\0';
+        console_print(buf);
+        console_print(" MB\n");
+    }
+    
     if (bootlog_data->cylinders > 0) {
         console_print("  Cylinders:     ");
         unsigned int cyl = bootlog_data->cylinders;
-        char buf[16];
-        int i = 0;
+        i = 0;
         if (cyl == 0) {
             buf[i++] = '0';
         } else {
@@ -76,8 +131,7 @@ void bootlog_print(void) {
     if (bootlog_data->heads > 0) {
         console_print("  Heads:         ");
         unsigned int h = bootlog_data->heads;
-        char buf[16];
-        int i = 0;
+        i = 0;
         if (h == 0) {
             buf[i++] = '0';
         } else {
@@ -99,8 +153,7 @@ void bootlog_print(void) {
     if (bootlog_data->sectors_per_track > 0) {
         console_print("  Sectors/track: ");
         unsigned int spt = bootlog_data->sectors_per_track;
-        char buf[16];
-        int i = 0;
+        i = 0;
         if (spt == 0) {
             buf[i++] = '0';
         } else {

@@ -62,6 +62,12 @@ boot_start:
     mov es, bx
     xor bx, bx           ; Offset 0
     int 0x13
+    
+    ; Add small delay after disk INT
+    mov cx, 0x1000
+.delay_boot:
+    loop .delay_boot
+    
     jc error
 
     ; Print success message
