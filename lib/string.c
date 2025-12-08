@@ -130,3 +130,32 @@ void print_decimal(int value) {
     }
     print_unsigned(magnitude);
 }
+
+int string_length(const char *str) {
+    return (int)strlen_impl(str);
+}
+
+void string_copy(char *dest, const char *src) {
+    strcpy_impl(dest, src);
+}
+
+void string_concat(char *dest, const char *src) {
+    char *end = dest;
+    while (*end) end++;
+    while (*src) {
+        *end++ = *src++;
+    }
+    *end = '\0';
+}
+
+void string_memset(uint8_t *dest, uint8_t value, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        dest[i] = value;
+    }
+}
+
+void string_memcpy(uint8_t *dest, const uint8_t *src, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        dest[i] = src[i];
+    }
+}

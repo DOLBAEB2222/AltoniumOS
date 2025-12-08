@@ -25,6 +25,10 @@ uint8_t read_keyboard(void) {
     return inb(0x60);
 }
 
+uint8_t keyboard_get_scancode(void) {
+    return read_keyboard();
+}
+
 char scancode_to_ascii(uint16_t scancode) {
     if (scancode & 0xE000) {
         return 0;

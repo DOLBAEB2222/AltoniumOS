@@ -3,6 +3,7 @@
 #include "../include/kernel/bootlog.h"
 #include "../include/drivers/console.h"
 #include "../include/drivers/storage/block_device.h"
+#include "../include/apps/installer.h"
 #include "../disk.h"
 #include "../fat12.h"
 
@@ -166,6 +167,8 @@ void handle_help(void) {
     console_print("  theme [OPTION] - Switch theme (normal/blue/green) or 'list'\n");
     console_print("  fsstat         - Show filesystem/disk statistics\n");
     console_print("  bootlog        - Show BIOS boot diagnostics\n");
+    console_print("  install        - Run OS installer wizard\n");
+    console_print("  diskpart       - Disk partition manager\n");
     console_print("  shutdown       - Shut down the system\n");
     console_print("  help           - Display this help message\n");
 }
@@ -714,6 +717,12 @@ void execute_command(const char *cmd_line) {
     } else if (strncmp_impl(cmd_line, "storage", 7) == 0 && 
                (cmd_line[7] == '\0' || cmd_line[7] == ' ' || cmd_line[7] == '\n')) {
         handle_storage_command();
+    } else if (strncmp_impl(cmd_line, "install", 7) == 0 && 
+               (cmd_line[7] == '\0' || cmd_line[7] == ' ' || cmd_line[7] == '\n')) {
+        installer_run_full_wizard();
+    } else if (strncmp_impl(cmd_line, "diskpart", 8) == 0 && 
+               (cmd_line[8] == '\0' || cmd_line[8] == ' ' || cmd_line[8] == '\n')) {
+        installer_run_diskpart();
     } else if (strncmp_impl(cmd_line, "help", 4) == 0 && 
                (cmd_line[4] == '\0' || cmd_line[4] == ' ' || cmd_line[4] == '\n')) {
         handle_help();

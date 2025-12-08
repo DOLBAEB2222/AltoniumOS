@@ -85,6 +85,8 @@ Type 'help' for available commands
 - `mkdir NAME` - Create a directory
 - `rm FILE` - Delete a regular file
 - `nano FILE` - Simple text editor with full-screen editing
+- `install` - Run OS installer wizard
+- `diskpart` - Disk partition manager
 - `shutdown` - Shut down the system
 
 ### Testing Disk I/O
@@ -161,6 +163,59 @@ Press Enter to create new lines.
 cat TEST.TXT
 # Should show the content you saved
 ```
+
+### Testing Installer
+
+The OS includes a full TUI-based installer wizard:
+
+```bash
+# Launch the installer
+install
+
+# You'll see a series of screens:
+# 1. Select target disk
+# 2. Choose partition table type (MBR recommended)
+# 3. Select filesystem (FAT32 recommended)
+# 4. Confirm formatting (press Y/N)
+# 5. File copy summary
+# 6. Bootloader installation
+# 7. Installation complete
+
+# Navigation:
+# - Arrow keys: Move selection up/down
+# - ENTER: Confirm selection
+# - ESC: Cancel/go back
+# - Y/N: Confirm destructive operations
+```
+
+### Testing Disk Partitioner
+
+The standalone partition manager allows you to manage disk partitions:
+
+```bash
+# Launch diskpart
+diskpart
+
+# You'll see:
+# - Current partition layout
+# - Actions menu:
+#   - Create new partition
+#   - Delete partition
+#   - Refresh partition list
+#   - Exit to shell
+
+# Try creating a partition:
+# 1. Select "Create new partition" and press ENTER
+# 2. Confirm with Y
+# 3. View the updated partition list
+
+# Try deleting a partition:
+# 1. Select "Delete partition" and press ENTER
+# 2. Confirm with Y
+# 3. The last partition will be removed
+```
+
+**See `INSTALLER_GUIDE.md` for full documentation and USB installation instructions.**
 
 ## Project Status
 

@@ -23,6 +23,8 @@ This OS includes the following console commands:
 - **rm FILE** – Delete a file from the current working directory
 - **nano FILE** – Simple text editor with full-screen editing (Ctrl+S to save, Ctrl+X to exit)
 - **theme [OPTION]** – Switch color theme (normal/blue/green) or 'list' to show available themes
+- **install** – Run the OS installer wizard (disk partitioning, formatting, and installation)
+- **diskpart** – Disk partition manager (create/delete partitions, view partition tables)
 - **shutdown** – Gracefully shut down the system (attempts ACPI power-off via port 0x604)
 - **help** – Display all available commands and usage hints
 
@@ -109,6 +111,60 @@ AltoniumOS includes a theme system that allows you to customize the console appe
   ```
 
 - **Nano editor integration:** The current theme is displayed in the nano status bar and automatically applied to all nano editor sessions
+
+### TUI Installer and Disk Partitioner
+
+AltoniumOS includes a lightweight Text User Interface (TUI) toolkit and installer utilities:
+
+#### Installer Wizard (`install`)
+
+A full-featured installation wizard that guides you through:
+1. **Disk Selection** – Choose target disk from detected storage devices
+2. **Partition Table Type** – Select MBR (recommended) or GPT
+3. **Filesystem Selection** – Choose FAT12, FAT32, or ext2
+4. **Formatting** – Create partition table and format filesystem
+5. **File Copy** – Summary of system files to copy (stub)
+6. **Bootloader** – Install boot sector (stub)
+
+**Usage:**
+```bash
+> install
+# Follow the on-screen prompts
+# Use arrow keys to navigate, ENTER to select, ESC to cancel
+```
+
+#### Disk Partition Manager (`diskpart`)
+
+Standalone partition management utility:
+- **List partitions** – View current partition table with type, start LBA, and size
+- **Create partitions** – Add new partitions in free space (max 4 for MBR)
+- **Delete partitions** – Remove partitions with confirmation
+- **Refresh display** – Reload partition table from disk
+
+**Usage:**
+```bash
+> diskpart
+# Use arrow keys to select actions
+# All destructive operations require confirmation (Y/N)
+```
+
+#### Supported Features
+
+- **Partition Tables:**
+  - MBR (Master Boot Record) with up to 4 primary partitions
+  - GPT (GUID Partition Table) stub for future expansion
+
+- **Filesystems:**
+  - FAT12 – Uses existing AltoniumOS formatter
+  - FAT32 – Creates boot sector, FAT tables, and root directory
+  - ext2 – Basic stub implementation (superblock and group descriptors)
+
+- **Safety:**
+  - Confirmation dialogs for all destructive operations
+  - Non-destructive testing mode in QEMU
+  - Clear status messages and error reporting
+
+**See `INSTALLER_GUIDE.md` for detailed documentation, USB installation instructions, and troubleshooting.**
 
 ## Building
 

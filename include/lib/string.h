@@ -19,6 +19,11 @@ int read_token(const char **input, char *dest, int max_len);
 int copy_path_argument(const char *input, char *dest, size_t max_len);
 void print_unsigned(uint32_t value);
 void print_decimal(int value);
+int string_length(const char *str);
+void string_copy(char *dest, const char *src);
+void string_concat(char *dest, const char *src);
+void string_memset(uint8_t *dest, uint8_t value, size_t count);
+void string_memcpy(uint8_t *dest, const uint8_t *src, size_t count);
 
 static inline uint8_t inb(uint16_t port) {
     uint8_t result;
