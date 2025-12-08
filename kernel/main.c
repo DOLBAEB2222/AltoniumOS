@@ -2,6 +2,7 @@
 #include "../include/kernel/bootlog.h"
 #include "../include/drivers/console.h"
 #include "../include/drivers/keyboard.h"
+#include "../include/drivers/storage/block_device.h"
 #include "../include/shell/prompt.h"
 #include "../include/shell/commands.h"
 #include "../disk.h"
@@ -47,6 +48,12 @@ void kernel_main(void) {
     console_print("Boot mode: ");
     console_print(get_boot_mode_name());
     console_print("\n");
+    
+    console_print("Initializing storage manager... ");
+    int storage_devices = storage_manager_init();
+    console_print("OK (");
+    print_decimal(storage_devices);
+    console_print(" device(s) detected)\n");
     
     if (boot_mode == BOOT_MODE_BIOS && bootlog_data->boot_method == 2) {
         console_print("\nFATAL: Disk read error during boot (status 0x");

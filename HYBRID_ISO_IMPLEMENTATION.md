@@ -332,6 +332,51 @@ The implementation provides a foundation for:
    - Performance testing tools
    - Memory testing utilities
 
+## Storage Hardware Abstraction Layer (Storage HAL)
+
+### Integration with Hybrid ISO
+
+The Storage HAL is fully integrated with the hybrid ISO boot environment:
+
+#### Boot Device Detection
+- **Automatic detection** of all PCI storage devices on startup
+- **Priority-based selection**: NVMe → AHCI → Legacy ATA
+- **Transparent mounting** of the highest-priority device for FAT12
+- Works seamlessly across BIOS and UEFI boot paths
+
+#### Testing with Hybrid ISO
+
+To test storage controller detection with AHCI:
+```bash
+qemu-system-i386 -cdrom dist/os-hybrid.iso -device ahci,id=ahci0
+```
+
+To test with NVMe:
+```bash
+qemu-system-i386 -cdrom dist/os-hybrid.iso -device nvme,serial=NVMe001
+```
+
+To test with both:
+```bash
+qemu-system-i386 -cdrom dist/os-hybrid.iso \
+  -device ahci,id=ahci0 \
+  -device nvme,serial=NVMe001
+```
+
+Once booted, use the `storage` command to list detected controllers:
+```
+storage
+```
+
+#### Current Limitations
+
+The Storage HAL is implemented as a modular system with stubs for advanced features:
+- **AHCI**: Detection and HBA initialization complete; DMA-based I/O pending
+- **NVMe**: Detection and admin queue initialization stub; full namespace support pending
+- **Legacy ATA**: Fully functional via existing PIO driver
+
+These limitations don't affect the hybrid ISO boot process, which uses the stable legacy ATA driver for FAT12 mounting.
+
 ## Conclusion
 
 The hybrid ISO implementation successfully delivers:

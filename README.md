@@ -11,6 +11,7 @@ This OS includes the following console commands:
 - **fetch** – Display OS and system information (name, version, architecture, build date/time, boot mode, detected memory)
 - **bootlog** – Display detailed BIOS boot diagnostics (EDD support, boot method, memory, geometry)
 - **disk** – Test raw disk I/O and show sector diagnostics
+- **storage** – List detected storage controllers and their capabilities (PCI enumeration results)
 - **ls [PATH]** – List files and directories from the current working directory or a supplied path
 - **dir [PATH]** – Alias for ls, list directory contents
 - **pwd** – Display the current working directory
@@ -25,9 +26,49 @@ This OS includes the following console commands:
 - **shutdown** – Gracefully shut down the system (attempts ACPI power-off via port 0x604)
 - **help** – Display all available commands and usage hints
 
-### Disk I/O Features
+### Storage Hardware Abstraction Layer (Storage HAL)
 
-The OS now includes an ATA PIO driver for disk I/O operations:
+AltoniumOS includes a unified Storage HAL that enumerates and manages multiple storage controllers:
+
+#### Device Detection Order
+The storage manager initializes controllers in priority order:
+1. **NVMe (Highest Priority)** – Modern NVMe devices (class 0x01, subclass 0x08)
+2. **AHCI (Middle Priority)** – SATA AHCI controllers (class 0x01, subclass 0x06)
+3. **Legacy ATA PIO (Fallback)** – Primary IDE channel (I/O ports 0x1F0-0x1F7)
+
+This ensures the fastest available storage device is used as the primary boot disk.
+
+#### PCI Configuration Helper
+- **PCI enumeration** via configuration mechanism 1
+- **Device discovery** of class 0x01 (Mass Storage) devices
+- **BAR (Base Address Register) detection** for memory-mapped controller access
+- Supports up to 256 PCI devices across all buses
+
+#### AHCI Support (Stub)
+- **Detection** of class 0x01/0x06 AHCI-mode SATA controllers
+- **HBA (Host Bus Adapter) initialization** with BAR mapping
+- **Port enumeration** and basic initialization
+- **Read/Write callbacks** through the block device abstraction
+- Current limitation: Polling mode stub (full DMA implementation pending)
+
+#### NVMe Support (Stub)
+- **Detection** of class 0x01/0x08 NVMe devices
+- **Admin queue** initialization stub
+- **IDENTIFY command** support for device discovery
+- **4 KiB logical block addressing** capability
+- **Read-only access** support in current release
+- Current limitation: Basic stub implementation (full namespace support pending)
+
+#### Block Device Abstraction
+- **Unified interface** for read/write operations across all storage types
+- **Sector size tracking** (512B for ATA/AHCI, 4KiB for NVMe)
+- **Capacity tracking** for multi-device systems
+- **Driver metadata** including queue depth and device type
+- Used by FAT12 filesystem for transparent device access
+
+#### Disk I/O Features
+
+The OS includes an ATA PIO driver for disk I/O operations:
 
 - Primary IDE channel support (I/O ports 0x1F0-0x1F7)
 - LBA addressing for up to 28-bit sector addresses
