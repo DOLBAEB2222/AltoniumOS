@@ -29,7 +29,9 @@ KERNEL_OBJS = $(BUILD_DIR)/kernel_entry.o \
 	$(BUILD_DIR)/nano.o \
 	$(BUILD_DIR)/disk.o \
 	$(BUILD_DIR)/fat12.o \
-	$(BUILD_DIR)/bootlog.o
+	$(BUILD_DIR)/bootlog.o \
+	$(BUILD_DIR)/log.o \
+	$(BUILD_DIR)/manager.o
 
 all: build
 
@@ -69,6 +71,12 @@ $(BUILD_DIR)/fat12.o: fat12.c dirs
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/bootlog.o: kernel/bootlog.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/log.o: kernel/log.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/manager.o: init/manager.c dirs
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/uefi_loader.o: bootloader/uefi_loader.c dirs
