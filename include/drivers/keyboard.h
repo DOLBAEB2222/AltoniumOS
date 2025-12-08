@@ -17,4 +17,10 @@ void handle_keyboard_input(void);
 void handle_console_scancode(uint16_t scancode);
 int keyboard_is_ctrl_pressed(void);
 
+#define KEY_ESC 27
+
+int keyboard_has_data(void);
+uint8_t keyboard_get_scancode(void);
+uint8_t keyboard_convert_scancode(uint8_t scancode);
+
 #endif

@@ -28,6 +28,8 @@ void handle_nano_command(const char *args);
 void handle_theme_command(const char *args);
 void handle_fsstat_command(void);
 void handle_bootlog_command(void);
+void handle_storage_command(void);
+void handle_beep_command(const char *args);
 
 const char *fat12_error_string(int code);
 void print_fs_error(int code);

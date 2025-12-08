@@ -34,7 +34,8 @@ KERNEL_OBJS = $(BUILD_DIR)/kernel_entry.o \
 	$(BUILD_DIR)/ata_pio.o \
 	$(BUILD_DIR)/ahci.o \
 	$(BUILD_DIR)/nvme.o \
-	$(BUILD_DIR)/storage_manager.o
+	$(BUILD_DIR)/storage_manager.o \
+	$(BUILD_DIR)/pcspeaker.o
 
 all: build
 
@@ -89,6 +90,9 @@ $(BUILD_DIR)/nvme.o: drivers/storage/nvme.c dirs
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/storage_manager.o: drivers/storage/storage_manager.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/pcspeaker.o: drivers/audio/pcspeaker.c dirs
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/uefi_loader.o: bootloader/uefi_loader.c dirs
