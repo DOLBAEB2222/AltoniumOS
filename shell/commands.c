@@ -2,6 +2,7 @@
 #include "../include/shell/nano.h"
 #include "../include/kernel/bootlog.h"
 #include "../include/drivers/console.h"
+#include "../include/drivers/storage/block_device.h"
 #include "../disk.h"
 #include "../fat12.h"
 
@@ -151,6 +152,7 @@ void handle_help(void) {
     console_print("  echo TEXT      - Print text to the screen\n");
     console_print("  fetch          - Print OS and system information\n");
     console_print("  disk           - Test disk I/O and show disk information\n");
+    console_print("  storage        - List detected storage controllers\n");
     console_print("  ls [PATH]      - List files in the current or given directory\n");
     console_print("  dir [PATH]     - Alias for ls\n");
     console_print("  pwd            - Show current directory\n");
@@ -610,6 +612,32 @@ void handle_bootlog_command(void) {
     bootlog_print();
 }
 
+void handle_storage_command(void) {
+    int dev_count = storage_get_device_count();
+    console_print("Storage Devices:\n");
+    
+    if (dev_count == 0) {
+        console_print("  No storage devices detected\n");
+        return;
+    }
+    
+    for (int i = 0; i < dev_count; i++) {
+        block_device_t *dev = storage_get_device(i);
+        if (!dev) continue;
+        
+        console_print("  [");
+        print_decimal(i);
+        console_print("] ");
+        console_print(dev->driver_name);
+        console_print(" - ");
+        console_print("Sector: ");
+        print_decimal(dev->sector_size);
+        console_print("B, Queue: ");
+        print_decimal(dev->queue_depth);
+        console_print("\n");
+    }
+}
+
 void execute_command(const char *cmd_line) {
     if (!cmd_line || *cmd_line == '\0') {
         return;
@@ -683,6 +711,9 @@ void execute_command(const char *cmd_line) {
     } else if (strncmp_impl(cmd_line, "bootlog", 7) == 0 && 
                (cmd_line[7] == '\0' || cmd_line[7] == ' ' || cmd_line[7] == '\n')) {
         handle_bootlog_command();
+    } else if (strncmp_impl(cmd_line, "storage", 7) == 0 && 
+               (cmd_line[7] == '\0' || cmd_line[7] == ' ' || cmd_line[7] == '\n')) {
+        handle_storage_command();
     } else if (strncmp_impl(cmd_line, "help", 4) == 0 && 
                (cmd_line[4] == '\0' || cmd_line[4] == ' ' || cmd_line[4] == '\n')) {
         handle_help();

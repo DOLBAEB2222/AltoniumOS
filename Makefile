@@ -29,7 +29,12 @@ KERNEL_OBJS = $(BUILD_DIR)/kernel_entry.o \
 	$(BUILD_DIR)/nano.o \
 	$(BUILD_DIR)/disk.o \
 	$(BUILD_DIR)/fat12.o \
-	$(BUILD_DIR)/bootlog.o
+	$(BUILD_DIR)/bootlog.o \
+	$(BUILD_DIR)/pci.o \
+	$(BUILD_DIR)/ata_pio.o \
+	$(BUILD_DIR)/ahci.o \
+	$(BUILD_DIR)/nvme.o \
+	$(BUILD_DIR)/storage_manager.o
 
 all: build
 
@@ -69,6 +74,21 @@ $(BUILD_DIR)/fat12.o: fat12.c dirs
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/bootlog.o: kernel/bootlog.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/pci.o: drivers/bus/pci.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/ata_pio.o: drivers/storage/ata_pio.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/ahci.o: drivers/storage/ahci.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/nvme.o: drivers/storage/nvme.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/storage_manager.o: drivers/storage/storage_manager.c dirs
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/uefi_loader.o: bootloader/uefi_loader.c dirs
