@@ -208,7 +208,16 @@ Type 'help' for available commands
 - **Current status:** Shows placeholder message
 - **Future:** Will boot full 64-bit kernel
 
-### 4. Hardware Diagnostics
+### 4. AltoniumOS - BIOS Safe Mode (No EDD)
+
+- **Purpose:** Boot the x86 kernel in BIOS mode without EDD extensions
+- **Target:** `/boot/x86/kernel.elf`
+- **Parameters:** `bootmode=bios arch=x86 edd=off`
+- **Best for:** Legacy systems, systems with problematic EDD firmware
+- **Use case:** Enables CHS addressing instead of INT 13h extensions
+- **Recommended for:** Lenovo 110-15ACL, Alder Lake systems with BIOS issues
+
+### 5. Hardware Diagnostics
 
 - **Purpose:** Display system information
 - **Shows:**
@@ -304,6 +313,36 @@ The hybrid ISO uses:
 - Press 'e' to edit boot parameters
 - Press 'c' for GRUB command line
 - Rebuild ISO: `make clean && make iso-hybrid`
+
+### Issue: Disk Read Errors During BIOS Boot
+
+**Symptoms:**
+- "FATAL: Disk read error during boot" message
+- System fails to load kernel
+- Common on Lenovo 110-15ACL or Alder Lake systems
+
+**Solution:**
+1. Check the error status with the `bootlog` command (if kernel partially loads)
+2. Reboot and select "AltoniumOS - BIOS Safe Mode (No EDD)" from GRUB menu
+3. This disables INT 13h extensions and uses CHS addressing instead
+4. If Safe Mode succeeds, update BIOS or check firmware settings
+
+**BIOS Settings to Check:**
+- Enable/disable AHCI mode in storage settings
+- Check for EDD (Extended Disk Drive) settings
+- Disable any "Fast Boot" or "Fast BIOS" options
+- Update BIOS to latest version if available
+
+**Boot Diagnostics:**
+Once booted, use the `bootlog` command to see:
+```
+bootlog
+Boot diagnostics:
+  Extensions:    EDD supported
+  Boot method:   CHS (in Safe Mode) / EDD (normal)
+  INT13 status:  0x00 (success) / error code
+  Memory:        Total detected memory in MB
+```
 
 ## Future Enhancements
 

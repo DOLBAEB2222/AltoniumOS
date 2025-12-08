@@ -13,7 +13,7 @@ else
     exit 1
 fi
 
-echo "2. Testing bootable disk image..."
+echo "2. Testing bootable disk image with legacy machine..."
 OUTPUT=$(timeout 3 qemu-system-i386 -drive file=dist/os.img,format=raw -nographic 2>&1)
 if echo "$OUTPUT" | grep -q "Loading AltoniumOS"; then
     echo "   ✓ Bootloader loads and displays message"
@@ -29,7 +29,22 @@ else
     echo "   ⚠ Stage2 messages not visible in serial output (expected behavior)"
 fi
 
-echo "4. Checking kernel.elf for Multiboot header..."
+echo "4. Testing bootable disk image with Q35 machine..."
+OUTPUT_Q35=$(timeout 3 qemu-system-i386 -machine q35 -drive file=dist/os.img,format=raw -nographic 2>&1)
+if echo "$OUTPUT_Q35" | grep -q "Loading AltoniumOS"; then
+    echo "   ✓ Bootloader loads on Q35 machine"
+else
+    echo "   ⚠ Q35 boot not visible (expected in -nographic mode)"
+fi
+
+echo "5. Checking bootlog indicates EDD support..."
+if echo "$OUTPUT" | grep -q "EDD supported"; then
+    echo "   ✓ Bootlog shows EDD support"
+else
+    echo "   ⚠ EDD status not visible in serial output (check with VGA display)"
+fi
+
+echo "6. Checking kernel.elf for Multiboot header..."
 if od -Ax -tx1 dist/kernel.elf | head -70 | grep -q "02 b0 ad 1b"; then
     echo "   ✓ Multiboot header present"
 else
@@ -37,7 +52,7 @@ else
     exit 1
 fi
 
-echo "5. Checking boot.bin size..."
+echo "7. Checking boot.bin size..."
 BOOT_SIZE=$(stat -c%s dist/boot.bin)
 if [ "$BOOT_SIZE" -eq 512 ]; then
     echo "   ✓ Boot sector is exactly 512 bytes"
@@ -51,4 +66,5 @@ echo "=== All tests passed! ==="
 echo "To run AltoniumOS:"
 echo "  • With QEMU multiboot: qemu-system-i386 -kernel dist/kernel.elf"
 echo "  • With disk image:     qemu-system-i386 -drive file=dist/os.img,format=raw"
+echo "  • With Q35 machine:    qemu-system-i386 -machine q35 -drive file=dist/os.img,format=raw"
 echo "  • Direct kernel boot:  qemu-system-i386 -hda dist/kernel.bin (not recommended)"

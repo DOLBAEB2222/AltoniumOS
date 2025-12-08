@@ -8,6 +8,7 @@
 extern void halt_cpu(void);
 extern const char *get_boot_mode_name(void);
 extern void bootlog_print(void);
+extern bootlog_data_t *bootlog_data;
 
 static int fat_ready = 0;
 static uint8_t fs_io_buffer[FS_IO_BUFFER_SIZE];
@@ -119,6 +120,29 @@ void handle_fetch(void) {
     console_print("Boot Mode: ");
     console_print(get_boot_mode_name());
     console_print("\n");
+    
+    if (bootlog_data && bootlog_data->memory_mb > 0) {
+        console_print("Memory: ");
+        unsigned int mem = bootlog_data->memory_mb;
+        char buf[16];
+        int i = 0;
+        if (mem == 0) {
+            buf[i++] = '0';
+        } else {
+            char temp[16];
+            int ti = 0;
+            while (mem > 0) {
+                temp[ti++] = '0' + (mem % 10);
+                mem /= 10;
+            }
+            for (int j = ti - 1; j >= 0; j--) {
+                buf[i++] = temp[j];
+            }
+        }
+        buf[i] = '\0';
+        console_print(buf);
+        console_print(" MB\n");
+    }
 }
 
 void handle_help(void) {

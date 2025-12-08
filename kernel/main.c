@@ -48,6 +48,44 @@ void kernel_main(void) {
     console_print(get_boot_mode_name());
     console_print("\n");
     
+    if (boot_mode == BOOT_MODE_BIOS && bootlog_data->boot_method == 2) {
+        console_print("\nFATAL: Disk read error during boot (status 0x");
+        char hex[3];
+        hex[0] = "0123456789ABCDEF"[bootlog_data->int13_status >> 4];
+        hex[1] = "0123456789ABCDEF"[bootlog_data->int13_status & 0x0F];
+        hex[2] = '\0';
+        console_print(hex);
+        console_print(")\n");
+        console_print("Cannot continue. Check BIOS settings or use Safe BIOS mode.\n");
+        console_print("Press Ctrl+Alt+Del to restart.\n");
+        while (1) {
+            __asm__ volatile("hlt");
+        }
+    }
+    
+    if (boot_mode == BOOT_MODE_BIOS && bootlog_data->memory_mb > 0) {
+        console_print("Detected memory: ");
+        unsigned int mem = bootlog_data->memory_mb;
+        char buf[16];
+        int i = 0;
+        if (mem == 0) {
+            buf[i++] = '0';
+        } else {
+            char temp[16];
+            int ti = 0;
+            while (mem > 0) {
+                temp[ti++] = '0' + (mem % 10);
+                mem /= 10;
+            }
+            for (int j = ti - 1; j >= 0; j--) {
+                buf[i++] = temp[j];
+            }
+        }
+        buf[i] = '\0';
+        console_print(buf);
+        console_print(" MB\n");
+    }
+    
     console_print("Initializing disk driver... ");
     int disk_result = disk_init();
     if (disk_result != 0) {
