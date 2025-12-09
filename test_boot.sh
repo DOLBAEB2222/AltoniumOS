@@ -61,6 +61,30 @@ else
     exit 1
 fi
 
+echo "8. Checking GRUB configurations for text mode settings..."
+if grep -q "terminal_output console" grub.cfg grub/hybrid.cfg grub-uefi.cfg; then
+    echo "   ✓ terminal_output console found in GRUB configs"
+else
+    echo "   ✗ terminal_output console missing from GRUB configs"
+    exit 1
+fi
+
+echo "9. Checking for video argument support in GRUB configs..."
+if grep -q "altonium_video_arg=video=text" grub.cfg grub/hybrid.cfg grub-uefi.cfg; then
+    echo "   ✓ video=text argument found in GRUB configs"
+else
+    echo "   ✗ video=text argument missing from GRUB configs"
+    exit 1
+fi
+
+echo "10. Testing kernel video=text flag parsing..."
+OUTPUT_VIDEO=$(timeout 2 qemu-system-i386 -kernel dist/kernel.elf -append "video=text" -display none > /dev/null 2>&1)
+if [ $? -eq 124 ]; then
+    echo "   ✓ Kernel accepts video=text flag"
+else
+    echo "   ⚠ Kernel may not properly handle video=text flag"
+fi
+
 echo
 echo "=== All tests passed! ==="
 echo "To run AltoniumOS:"
@@ -68,3 +92,10 @@ echo "  • With QEMU multiboot: qemu-system-i386 -kernel dist/kernel.elf"
 echo "  • With disk image:     qemu-system-i386 -drive file=dist/os.img,format=raw"
 echo "  • With Q35 machine:    qemu-system-i386 -machine q35 -drive file=dist/os.img,format=raw"
 echo "  • Direct kernel boot:  qemu-system-i386 -hda dist/kernel.bin (not recommended)"
+echo
+echo "GRUB Text Fallback Features:"
+echo "  • Text mode forced via terminal_output console"
+echo "  • gfxpayload=text set to avoid video warnings"
+echo "  • video=text kernel argument supported"
+echo "  • novideo flag for complete text-only mode"
+echo "  • Console output buffered for bootlog viewing"

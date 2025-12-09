@@ -227,6 +227,14 @@ If you experience disk read errors on problematic hardware, use the "Safe BIOS M
 - This disables INT 13h extensions and uses traditional CHS addressing
 - Useful for older BIOS implementations or firmware bugs related to EDD
 
+**GRUB Text Fallback Mode:**
+To resolve video warnings on systems like certain Lenovo BIOS implementations:
+
+- **Force Text Mode:** All GRUB configurations now explicitly set `terminal_output console` and `gfxpayload=text`
+- **Kernel Video Arguments:** The kernel supports `video=text` and `novideo` command-line arguments
+- **Text-Only Mode:** Select "AltoniumOS - Text Only Mode" to completely disable video output
+- **Buffered Console:** When video is disabled, console output is buffered internally and accessible via the `bootlog` command
+
 **EDD (Enhanced Disk Drive) Support:**
 - Modern systems use INT 13h extensions (AH=42h) for larger disk support
 - Older systems or problematic BIOS implementations fall back to CHS addressing

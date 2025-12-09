@@ -177,4 +177,16 @@ void bootlog_print(void) {
         console_print(bootlog_data->bios_vendor);
         console_print("\n");
     }
+    
+    // Check if console output was buffered (text-only mode)
+    if (!console_is_enabled()) {
+        console_print("  Console mode:  Text-only (buffered output)\n");
+        char buf[32];
+        int buflen = console_buffer_get(buf, sizeof(buf) - 1);
+        if (buflen > 0) {
+            console_print("  Buffered output available via 'bootlog' command\n");
+        }
+    } else {
+        console_print("  Console mode:  Video enabled\n");
+    }
 }

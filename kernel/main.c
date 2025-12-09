@@ -1,5 +1,6 @@
 #include "../include/kernel/main.h"
 #include "../include/kernel/bootlog.h"
+#include "../include/kernel/cmdline.h"
 #include "../include/drivers/console.h"
 #include "../include/drivers/keyboard.h"
 #include "../include/drivers/storage/block_device.h"
@@ -12,6 +13,7 @@ extern uint32_t multiboot_magic_storage;
 extern uint32_t multiboot_info_ptr_storage;
 
 static int boot_mode = BOOT_MODE_UNKNOWN;
+static int console_mode = 1; // 1 = video enabled, 0 = text-only mode
 
 void detect_boot_mode(void) {
     boot_mode = BOOT_MODE_BIOS;
@@ -28,7 +30,19 @@ void detect_boot_mode(void) {
         if (string_contains(cmdline, "bootmode=uefi")) {
             boot_mode = BOOT_MODE_UEFI;
         }
+        
+        // Parse video mode from command line
+        int video_result = parse_video_mode(cmdline);
+        if (video_result == 0) {
+            console_mode = 0; // novideo - text-only mode
+        } else if (video_result == 1) {
+            console_mode = 1; // video=text - but still allow video
+        }
     }
+}
+
+int get_console_mode(void) {
+    return console_mode;
 }
 
 const char *get_boot_mode_name(void) {
@@ -42,8 +56,18 @@ const char *get_boot_mode_name(void) {
 void kernel_main(void) {
     detect_boot_mode();
     bootlog_init();
-    vga_clear();
-    console_print("Welcome to AltoniumOS 1.0.0\n");
+    
+    // Initialize console buffer and set video state
+    console_buffer_init();
+    console_set_enabled(console_mode);
+    
+    if (console_mode) {
+        vga_clear();
+        console_print("Welcome to AltoniumOS 1.0.0\n");
+    } else {
+        // Text-only mode warning
+        console_print("WARNING: Running in text-only mode (no video output)\n");
+    }
 
     console_print("Boot mode: ");
     console_print(get_boot_mode_name());
