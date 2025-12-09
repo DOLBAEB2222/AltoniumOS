@@ -9,6 +9,8 @@ static theme_t themes[THEME_COUNT] = {
 };
 
 static console_state_t global_console_state = {0, 0, THEME_NORMAL};
+static console_buffer_t console_buffer = {0};
+static int console_enabled = 1;
 
 void console_init(console_state_t *state) {
     if (state) {
@@ -41,6 +43,14 @@ void update_hardware_cursor(int x, int y) {
 }
 
 void vga_write_char(char c, uint8_t attr) {
+    // Always buffer output, regardless of video state
+    console_buffer_putchar(c);
+    
+    // Only write to VGA if console is enabled
+    if (!console_enabled) {
+        return;
+    }
+    
     if (c == '\n') {
         global_console_state.cursor_x = 0;
         global_console_state.cursor_y++;
@@ -73,13 +83,22 @@ void vga_write_char(char c, uint8_t attr) {
 
 void vga_clear(void) {
     uint8_t text_attr = get_current_text_attr();
-    for (int i = 0; i < VGA_WIDTH * VGA_HEIGHT; i++) {
-        VGA_BUFFER[i * 2] = ' ';
-        VGA_BUFFER[i * 2 + 1] = text_attr;
+    
+    // Only clear VGA memory if console is enabled
+    if (console_enabled) {
+        for (int i = 0; i < VGA_WIDTH * VGA_HEIGHT; i++) {
+            VGA_BUFFER[i * 2] = ' ';
+            VGA_BUFFER[i * 2 + 1] = text_attr;
+        }
     }
+    
     global_console_state.cursor_x = 0;
     global_console_state.cursor_y = 0;
-    update_hardware_cursor(global_console_state.cursor_x, global_console_state.cursor_y);
+    
+    // Only update hardware cursor if console is enabled
+    if (console_enabled) {
+        update_hardware_cursor(global_console_state.cursor_x, global_console_state.cursor_y);
+    }
 }
 
 void console_print(const char *str) {
@@ -131,4 +150,48 @@ void console_set_theme(int theme) {
 
 const theme_t *console_get_themes(void) {
     return themes;
+}
+
+void console_set_enabled(int enabled) {
+    console_enabled = enabled;
+    console_buffer.enabled = enabled;
+}
+
+int console_is_enabled(void) {
+    return console_enabled;
+}
+
+void console_buffer_init(void) {
+    console_buffer.head = 0;
+    console_buffer.tail = 0;
+    console_buffer.count = 0;
+    console_buffer.enabled = 1;
+}
+
+void console_buffer_putchar(char c) {
+    if (console_buffer.count < CONSOLE_BUFFER_SIZE) {
+        console_buffer.buffer[console_buffer.tail] = c;
+        console_buffer.tail = (console_buffer.tail + 1) % CONSOLE_BUFFER_SIZE;
+        console_buffer.count++;
+    }
+}
+
+void console_buffer_puts(const char *str) {
+    if (!str) return;
+    for (int i = 0; str[i] != '\0'; i++) {
+        console_buffer_putchar(str[i]);
+    }
+}
+
+int console_buffer_get(char *buf, int size) {
+    if (!buf || size <= 0) return 0;
+    
+    int copied = 0;
+    while (copied < size && console_buffer.count > 0) {
+        buf[copied] = console_buffer.buffer[console_buffer.head];
+        console_buffer.head = (console_buffer.head + 1) % CONSOLE_BUFFER_SIZE;
+        console_buffer.count--;
+        copied++;
+    }
+    return copied;
 }

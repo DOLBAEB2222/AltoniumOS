@@ -344,6 +344,34 @@ Boot diagnostics:
   Memory:        Total detected memory in MB
 ```
 
+### Issue: GRUB Video Warnings on Hardware Like Lenovo BIOS
+
+**Symptoms:**
+- GRUB displays "grub_video_set_mode" warnings
+- Video initialization problems during boot
+- May cause boot delays or failures
+
+**Solution:**
+1. **Text Fallback Mode:** All GRUB configurations now force text mode to avoid video warnings
+2. **New Menu Entry:** Select "AltoniumOS - Text Only Mode" for complete video avoidance
+3. **Kernel Arguments:** The kernel supports `video=text` and `novideo` parameters
+4. **Buffered Console:** When video is disabled, output is buffered internally
+
+**Available Boot Options:**
+- **Standard Boot:** `terminal_output console` + `gfxpayload=text` (recommended)
+- **Text Only Mode:** Completely disables video output (`novideo` flag)
+- **Safe BIOS Mode:** Combines EDD disable with text fallback
+
+**Checking Console Mode:**
+Use the `bootlog` command to see console mode status:
+```
+bootlog
+Boot diagnostics:
+  ...
+  Console mode:  Text-only (buffered output)
+  Console mode:  Video enabled
+```
+
 ## Future Enhancements
 
 The hybrid ISO infrastructure supports future improvements:

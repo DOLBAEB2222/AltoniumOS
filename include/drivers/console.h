@@ -5,6 +5,7 @@
 
 #define VGA_WIDTH 80
 #define VGA_HEIGHT 25
+#define CONSOLE_BUFFER_SIZE 4096
 
 #define VGA_COLOR_BLACK 0x0
 #define VGA_COLOR_BLUE 0x1
@@ -43,6 +44,14 @@ typedef struct {
     int current_theme;
 } console_state_t;
 
+typedef struct {
+    char buffer[CONSOLE_BUFFER_SIZE];
+    int head;
+    int tail;
+    int count;
+    int enabled;
+} console_buffer_t;
+
 void console_init(console_state_t *state);
 console_state_t *console_get_state(void);
 void vga_clear(void);
@@ -58,5 +67,11 @@ void console_set_cursor(int x, int y);
 int console_get_theme(void);
 void console_set_theme(int theme);
 const theme_t *console_get_themes(void);
+void console_set_enabled(int enabled);
+int console_is_enabled(void);
+void console_buffer_init(void);
+void console_buffer_putchar(char c);
+void console_buffer_puts(const char *str);
+int console_buffer_get(char *buf, int size);
 
 #endif

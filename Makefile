@@ -22,6 +22,7 @@ ISO_HYBRID = $(DIST_DIR)/os-hybrid.iso
 KERNEL_OBJS = $(BUILD_DIR)/kernel_entry.o \
 	$(BUILD_DIR)/main.o \
 	$(BUILD_DIR)/string.o \
+	$(BUILD_DIR)/cmdline.o \
 	$(BUILD_DIR)/vga_console.o \
 	$(BUILD_DIR)/keyboard.o \
 	$(BUILD_DIR)/prompt.o \
@@ -47,6 +48,9 @@ $(BUILD_DIR)/kernel_entry.o: kernel_entry.asm dirs
 	$(AS) $(ASFLAGS) -o $@ $<
 
 $(BUILD_DIR)/main.o: kernel/main.c dirs
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/cmdline.o: kernel/cmdline.c dirs
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/string.o: lib/string.c dirs
@@ -205,4 +209,3 @@ help:
 	@echo "  clean          - Remove build artifacts"
 	@echo "  run            - Show how to run with QEMU direct kernel boot"
 	@echo "  help           - Show this help message"
-

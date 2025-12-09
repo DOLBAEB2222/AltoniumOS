@@ -456,6 +456,57 @@ Boot diagnostics:
    - UEFI path is generally more reliable on modern systems
    - Try UEFI boot if BIOS fails
 
+## GRUB Text Fallback for Video Issues
+
+On some hardware (particularly certain Lenovo BIOS implementations), you may encounter video warnings during boot:
+
+### Symptoms
+- GRUB displays "grub_video_set_mode" warnings
+- Video initialization delays or failures
+- Boot hangs or crashes related to video
+
+### Solution: GRUB Text Fallback
+
+AltoniumOS now includes automatic text fallback to resolve these issues:
+
+**1. Force Text Mode in GRUB:**
+All GRUB configurations now explicitly set:
+- `terminal_input console`
+- `terminal_output console`  
+- `set gfxpayload=text`
+
+**2. Kernel Video Arguments:**
+The kernel supports command-line arguments:
+- `video=text` - Enable text mode explicitly
+- `novideo` - Complete video disable (text-only mode)
+
+**3. Boot Menu Options:**
+- **Standard Boot:** Text mode with video fallback available
+- **Text Only Mode:** Completely disables video output (`novideo` flag)
+
+**4. Console Buffering:**
+When video is disabled:
+- All console output is buffered internally
+- Accessible via the `bootlog` command
+- Provides full boot diagnostics even in text-only mode
+
+**Example Boot Diagnostics:**
+```bash
+bootlog
+Boot diagnostics:
+  Extensions:    EDD supported
+  Console mode:  Text-only (buffered output)
+  Memory:        8192 MB
+  BIOS vendor:   [vendor string]
+```
+
+**Selecting Text Mode:**
+- Boot the ISO and select "AltoniumOS - Text Only Mode" 
+- Or add `novideo` to kernel arguments manually
+- Or use `video=text` for explicit text mode preference
+
+This resolves video compatibility issues while maintaining full functionality.
+
 ## Advanced Debugging
 
 ### Enable UEFI Debug Messages
